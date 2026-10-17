@@ -400,7 +400,7 @@ local toolbar = plugin:CreateToolbar("Studio Controller Pro")
 toolbarButton = toolbar:CreateButton(
 	"StudioControllerPro_Toggle",
 	"Turn controller mode on or off",
-	Theme.GetToolbarIcon(),
+	Theme.GamepadIcon,
 	"Controller"
 )
 local settingsButton = toolbar:CreateButton(
@@ -410,6 +410,14 @@ local settingsButton = toolbar:CreateButton(
 	"Settings"
 )
 toolbarButton.ClickableWhenViewportHidden = true
+
+-- The custom icon is an uploaded asset; swap it in once it loads so the
+-- button never shows blank (e.g. while a new upload is in moderation).
+task.spawn(function()
+	if Theme.ToolbarIcon and Theme.IsAssetAvailable(Theme.ToolbarIcon) then
+		toolbarButton.Icon = Theme.ToolbarIcon
+	end
+end)
 settingsButton.ClickableWhenViewportHidden = true
 
 maid:Give(toolbarButton.Click:Connect(function()
@@ -420,7 +428,7 @@ local toggleAction = plugin:CreatePluginAction(
 	"StudioControllerPro_ToggleAction",
 	"Toggle Controller Mode",
 	"Turn Studio Controller Pro's controller mode on or off",
-	Theme.GetToolbarIcon(),
+	Theme.GamepadIcon,
 	true
 )
 maid:Give(toggleAction.Triggered:Connect(function()
@@ -430,7 +438,7 @@ local panelAction = plugin:CreatePluginAction(
 	"StudioControllerPro_PanelAction",
 	"Open Controller Settings",
 	"Show the Studio Controller Pro panel",
-	Theme.GetToolbarIcon(),
+	Theme.GamepadIcon,
 	true
 )
 

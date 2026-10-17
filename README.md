@@ -60,7 +60,7 @@ To add an action, add it to `Core/Actions.luau` and handle it in `pressHandlers`
 
 ## Publishing checklist
 
-1. Upload `assets/toolbar-64.png` as an Image on the Creator Dashboard and set `Theme.ToolbarIcon` in `src/UI/Theme.luau` to its `rbxassetid://` id. Until then the toolbar uses Studio's built-in gamepad glyph.
+1. The toolbar icon (`assets/toolbar-64.png`) is uploaded as `rbxassetid://132043442625969` and set in `Theme.ToolbarIcon`. The plugin shows Studio's built-in gamepad glyph until the asset loads, which covers the time a new upload spends in moderation.
 2. Build to a file: `rojo build default.project.json -o StudioControllerPro.rbxm`.
 3. In Studio, insert the `.rbxm`, right-click the `StudioControllerPro` script, and choose **Publish as Plugin**. Use `assets/logo-512.png` as the listing icon.
 4. Set the price to Free and publish to the Creator Store.

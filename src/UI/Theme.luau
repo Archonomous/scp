@@ -84,12 +84,19 @@ Theme.Icons = {
 -- Built-in gamepad glyph used for the panel logo and as the toolbar fallback.
 Theme.GamepadIcon = "rbxasset://textures/DeviceEmulator/sim_console@32.png"
 
--- Toolbar icon. Upload assets/toolbar-64.png as an Image asset and put its
--- id here (e.g. "rbxassetid://123") before publishing.
-Theme.ToolbarIcon = nil :: string?
+-- Toolbar icon: assets/toolbar-64.png uploaded as an Image asset. Falls back
+-- to the built-in gamepad glyph if set to nil.
+Theme.ToolbarIcon = "rbxassetid://132043442625969" :: string?
 
-function Theme.GetToolbarIcon(): string
-	return Theme.ToolbarIcon or Theme.GamepadIcon
+-- Yields until the asset has loaded or failed.
+function Theme.IsAssetAvailable(contentId: string): boolean
+	local status = nil
+	local ok = pcall(function()
+		game:GetService("ContentProvider"):PreloadAsync({ contentId }, function(_, fetchStatus)
+			status = fetchStatus
+		end)
+	end)
+	return ok and status == Enum.AssetFetchStatus.Success
 end
 
 local bindings = setmetatable({}, { __mode = "k" }) :: { [Instance]: { [string]: any } }
