@@ -1,0 +1,13 @@
+{
+  "name": "StudioControllerPro_v0.1",
+  "servePort": 34800,
+  "tree": {
+    "$className": "DataModel",
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "StudioControllerPro": {
+        "$path": "src"
+      }
+    }
+  }
+}

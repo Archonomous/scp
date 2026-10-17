@@ -1,0 +1,6 @@
+*.rbxm
+*.rbxmx
+!assets/**
+sourcemap.json
+.DS_Store
+Thumbs.db
