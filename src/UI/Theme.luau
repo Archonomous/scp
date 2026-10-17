@@ -72,8 +72,9 @@ Theme.Icons = {
 	Copy = "Shared/Clipboard/{theme}/Standard/Copy",
 	Delete = "Shared/Ribbon/{theme}/Standard/RibbonDeleteSmall",
 	Edit = "Shared/GenerativeAI/{theme}/Standard/EditMessage",
-	Import = "Lua/FileSync/{theme}/Standard/Import",
-	Export = "Lua/FileSync/{theme}/Standard/Export",
+	Import = "Lua/AssetManager/{theme}/Standard/Import",
+	-- Drawn as Import rotated 180° (no matching export glyph exists).
+	Export = "Lua/AssetManager/{theme}/Standard/Import",
 	Reset = "Lua/TerrainEditor/{theme}/Standard/Reset",
 	Info = "Shared/Alerts/{theme}/Standard/Information",
 	Warning = "Shared/Alerts/{theme}/Standard/Warning",
@@ -86,7 +87,7 @@ Theme.GamepadIcon = "rbxasset://textures/DeviceEmulator/sim_console@32.png"
 
 -- Toolbar icon: assets/toolbar-64.png uploaded as an Image asset. Falls back
 -- to the built-in gamepad glyph if set to nil.
-Theme.ToolbarIcon = "rbxassetid://132043442625969" :: string?
+Theme.ToolbarIcon = "rbxassetid://133036900519023" :: string?
 
 -- Yields until the asset has loaded or failed.
 function Theme.IsAssetAvailable(contentId: string): boolean

@@ -1,23 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#4A74FF"/>
-      <stop offset="1" stop-color="#2A4FE6"/>
+    <radialGradient id="tile" cx="0.5" cy="0.35" r="0.75">
+      <stop offset="0" stop-color="#2A2459"/>
+      <stop offset="1" stop-color="#0E0F22"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0.05" y1="0.1" x2="0.95" y2="0.9">
+      <stop offset="0" stop-color="#36E0FF"/>
+      <stop offset="0.45" stop-color="#6B5BFF"/>
+      <stop offset="0.75" stop-color="#B14BFF"/>
+      <stop offset="1" stop-color="#FF4FA8"/>
     </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <path id="pad" d="M176 168H336C384 168 410 196 420 240L444 330C452 368 428 392 398 392C378 392 364 382 352 364L330 332H182L160 364C148 382 134 392 114 392C84 392 60 368 68 330L92 240C102 196 128 168 176 168Z"/>
   </defs>
   <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#tile)"/>
+  <rect x="16.5" y="16.5" width="479" height="479" rx="111.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
   <g transform="translate(0 -20)">
-    <!-- Controller body -->
-    <path fill="#FFFFFF" d="M176 168H336C384 168 410 196 420 240L444 330C452 368 428 392 398 392C378 392 364 382 352 364L330 332H182L160 364C148 382 134 392 114 392C84 392 60 368 68 330L92 240C102 196 128 168 176 168Z"/>
+    <use href="#pad" fill="url(#body)" filter="url(#glow)" opacity="0.75"/>
+    <use href="#pad" fill="url(#body)"/>
+    <!-- Highlight along the top edge -->
+    <path d="M176 176H336C372 176 396 196 406 228" fill="none" stroke="#FFFFFF" stroke-opacity="0.35" stroke-width="6" stroke-linecap="round"/>
     <!-- D-pad -->
-    <rect x="152" y="242" width="56" height="20" rx="5" fill="#2F5BFF"/>
-    <rect x="170" y="224" width="20" height="56" rx="5" fill="#2F5BFF"/>
+    <rect x="152" y="242" width="56" height="20" rx="5" fill="#15132E"/>
+    <rect x="170" y="224" width="20" height="56" rx="5" fill="#15132E"/>
     <!-- Face buttons -->
-    <circle cx="334" cy="226" r="12" fill="#2F5BFF"/>
-    <circle cx="334" cy="278" r="12" fill="#2F5BFF"/>
-    <circle cx="308" cy="252" r="12" fill="#2F5BFF"/>
-    <circle cx="360" cy="252" r="12" fill="#2F5BFF"/>
+    <circle cx="334" cy="226" r="12" fill="#15132E"/>
+    <circle cx="334" cy="278" r="12" fill="#15132E"/>
+    <circle cx="308" cy="252" r="12" fill="#15132E"/>
+    <circle cx="360" cy="252" r="12" fill="#15132E"/>
     <!-- Studio motif: tilted square -->
-    <rect x="242" y="238" width="28" height="28" rx="5" fill="#2F5BFF" transform="rotate(15 256 252)"/>
+    <rect x="242" y="238" width="28" height="28" rx="5" fill="#FFFFFF" transform="rotate(15 256 252)"/>
   </g>
 </svg>

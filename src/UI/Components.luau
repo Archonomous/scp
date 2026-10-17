@@ -189,6 +189,7 @@ local BUTTON_COLORS = {
 function Components.Button(props: {
 	text: string?,
 	icon: string?,
+	iconRotation: number?,
 	style: ButtonStyle?,
 	onClick: (() -> ())?,
 	size: UDim2?,
@@ -225,7 +226,7 @@ function Components.Button(props: {
 
 	local icon
 	if props.icon then
-		icon = Components.Icon(props.icon, 16, { LayoutOrder = 1, Parent = button })
+		icon = Components.Icon(props.icon, 16, { LayoutOrder = 1, Rotation = props.iconRotation or 0, Parent = button })
 	end
 	local label
 	if props.text then

@@ -279,7 +279,7 @@ function App:_buildHeader(root: Frame)
 		Children = { Components.Corner(6) },
 		Parent = header,
 	})
-	new("ImageLabel", {
+	local logoImage = new("ImageLabel", {
 		Image = Theme.GamepadIcon,
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -287,6 +287,14 @@ function App:_buildHeader(root: Frame)
 		Size = UDim2.fromOffset(22, 22),
 		Parent = logo,
 	})
+	-- Swap to the full-color logo once the uploaded asset is available.
+	task.spawn(function()
+		if Theme.ToolbarIcon and Theme.IsAssetAvailable(Theme.ToolbarIcon) and logo.Parent then
+			logo.BackgroundTransparency = 1
+			logoImage.Image = Theme.ToolbarIcon
+			logoImage.Size = UDim2.fromScale(1, 1)
+		end
+	end)
 
 	Components.Text({
 		Text = "Studio Controller Pro",
@@ -1080,6 +1088,7 @@ function App:_render_profiles(content: Frame, maid: any)
 	Components.Button({
 		text = "Export",
 		icon = Theme.Icons.Export,
+		iconRotation = 180,
 		onClick = function()
 			self._exportVisible = not self._exportVisible
 			self._importVisible = false
