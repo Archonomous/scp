@@ -180,7 +180,12 @@ function Hud.new(gamepad: any)
 end
 
 function Hud:_refreshVisibility()
-	self.Gui.Enabled = self._controllerOn and self._visible and not self._captureHidden
+	-- The button guide is shown on request even when the status HUD is hidden.
+	self.Gui.Enabled = self._controllerOn and not self._captureHidden and (self._visible or self._guideOpen)
+	self._status.Visible = self._visible
+	if not self._visible then
+		self._toast.Visible = false
+	end
 end
 
 function Hud:SetControllerOn(on: boolean)
@@ -245,6 +250,9 @@ function Hud:SetStatus(status: { profile: string?, speed: number?, fov: number?,
 end
 
 function Hud:Toast(text: string, glyphKey: string?)
+	if not self._visible then
+		return
+	end
 	self:Poke()
 	self._toastToken += 1
 	local token = self._toastToken
@@ -280,6 +288,7 @@ end
 function Hud:SetGuideOpen(open: boolean)
 	self._guideOpen = open
 	self._guide.Visible = open
+	self:_refreshVisibility()
 end
 
 -- Rebuilds the guide from a profile's bindings.

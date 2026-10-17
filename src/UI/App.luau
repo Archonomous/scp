@@ -236,6 +236,11 @@ function App.new(plugin: Plugin, runtime: any)
 	self._maid:Give(self._captures.Changed:Connect(function()
 		self:_renderPage("captures")
 	end))
+	if runtime.Notice then
+		self._maid:Give(runtime.Notice:Connect(function(message)
+			self:Notify(message)
+		end))
+	end
 	self._maid:Give(runtime.StateChanged:Connect(function()
 		self._switch.Set(runtime:IsOn())
 		self:_renderStatus()
@@ -1159,6 +1164,61 @@ end
 
 -- Captures page --------------------------------------------------------------------------
 
+local STAR_ICON = "rbxasset://textures/ui/icon_star-16.png"
+
+-- Star toggle drawn over thumbnails and in the viewer.
+local function starBadge(capture: any, onClick: () -> (), parent: Instance): ImageButton
+	local badge = new("ImageButton", {
+		Name = "Star",
+		AutoButtonColor = false,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -6, 0, 6),
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Color3.fromRGB(20, 20, 24),
+		BackgroundTransparency = 0.35,
+		ZIndex = 3,
+		Children = { Components.Corner(12) },
+		Parent = parent,
+	})
+	local icon = new("ImageLabel", {
+		Image = STAR_ICON,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(16, 16),
+		ZIndex = 4,
+		Parent = badge,
+	})
+	if capture.saving then
+		icon.ImageTransparency = 0.5
+		Components.AttachTooltip(badge, "Saving…")
+	elseif capture.starred then
+		Components.AttachTooltip(badge, "Starred: saved to ServerStorage. Click to unstar")
+	else
+		-- Desaturated until starred.
+		icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
+		icon.ImageTransparency = 0.25
+		Components.AttachTooltip(badge, "Star to keep: uploads it and adds a plane in ServerStorage")
+	end
+	badge.Activated:Connect(function()
+		Components.HideTooltip()
+		if not capture.saving then
+			onClick()
+		end
+	end)
+	return badge
+end
+
+function App:_toggleStar(capture: any)
+	if capture.starred then
+		self._captures:Unstar(capture.id)
+		self:Notify("Unstarred. Its plane in ServerStorage is kept.")
+	else
+		self._runtime:StarCapture(capture.id)
+		self:Notify("Uploading “" .. capture.name .. "”…")
+	end
+end
+
 function App:_render_captures(content: Frame, maid: any)
 	local captures = self._captures
 	local order = 0
@@ -1167,12 +1227,7 @@ function App:_render_captures(content: Frame, maid: any)
 		return order
 	end
 
-	local selected = nil
-	for _, capture in captures.list do
-		if capture.id == self._selectedCapture then
-			selected = capture
-		end
-	end
+	local selected = captures:Get(self._selectedCapture or -1)
 
 	if selected then
 		local row = buttonRow(nextOrder(), content)
@@ -1195,6 +1250,9 @@ function App:_render_captures(content: Frame, maid: any)
 			Children = { Components.Corner(6) },
 			Parent = content,
 		})
+		starBadge(selected, function()
+			self:_toggleStar(selected)
+		end, preview)
 		-- Fit the preview to the capture's aspect ratio, capped so tall
 		-- viewports don't push everything else off screen.
 		local function fitPreview()
@@ -1205,39 +1263,89 @@ function App:_render_captures(content: Frame, maid: any)
 		end
 		maid:Give(preview:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPreview))
 		task.defer(fitPreview)
+
+		Components.Text({
+			Text = selected.name,
+			FontFace = Theme.Font.Medium,
+			Size = UDim2.new(1, 0, 0, 18),
+			LayoutOrder = nextOrder(),
+			Parent = content,
+		})
+		local position = selected.cframe.Position
 		hint(
 			string.format(
-				"%s · FOV %d° · (%d, %d, %d)",
-				os.date("%H:%M:%S", selected.time),
+				"FOV %d° · (%d, %d, %d)%s",
 				math.round(selected.fov),
-				math.round(selected.position.X),
-				math.round(selected.position.Y),
-				math.round(selected.position.Z)
+				math.round(position.X),
+				math.round(position.Y),
+				math.round(position.Z),
+				if captures:IsFromThisPlace(selected) then "" else " · from " .. selected.placeName
 			),
 			nextOrder(),
 			content
 		)
-		hint(
-			"Plugins can't save image files, so captures last for this Studio session. To keep one, open it here and use the Windows Snipping Tool (Win+Shift+S).",
-			nextOrder(),
-			content
-		)
+
 		local actionRow = buttonRow(nextOrder(), content)
-		Components.Button({
-			text = "Delete",
-			icon = Theme.Icons.Delete,
-			style = "danger",
+		local goButton = Components.Button({
+			text = "Go to view",
+			style = "primary",
 			onClick = function()
-				self._selectedCapture = nil
-				captures:Remove(selected.id)
+				local err = self._runtime:GoToCapture(selected.id)
+				if err then
+					self:Notify(err)
+				end
 			end,
 			parent = actionRow,
 		})
+		goButton.SetEnabled(captures:IsFromThisPlace(selected))
+		Components.Button({
+			text = if selected.saving then "Saving…" elseif selected.starred then "Unstar" else "Star",
+			onClick = function()
+				if not selected.saving then
+					self:_toggleStar(selected)
+				end
+			end,
+			parent = actionRow,
+		})
+		local deleteButton
+		deleteButton = Components.Button({
+			text = if self._confirmCaptureDelete then "Confirm" else "Delete",
+			icon = Theme.Icons.Delete,
+			style = if self._confirmCaptureDelete then "danger" else "ghost",
+			onClick = function()
+				if self._confirmCaptureDelete then
+					self._confirmCaptureDelete = false
+					self._selectedCapture = nil
+					captures:Remove(selected.id)
+				else
+					self._confirmCaptureDelete = true
+					self:_renderPage("captures")
+					task.delay(3, function()
+						if self._confirmCaptureDelete then
+							self._confirmCaptureDelete = false
+							self:_renderPage("captures")
+						end
+					end)
+				end
+			end,
+			parent = actionRow,
+		})
+		local _ = deleteButton
+
+		hint(
+			if selected.starred
+				then "Starred captures are uploaded to your account and placed in ServerStorage › "
+					.. captures.FolderName
+					.. ". The plane keeps this view in its attributes. Deleting here only removes it from the gallery."
+				else "Unstarred captures last for this Studio session. Star it to upload it and add an exportable plane to ServerStorage.",
+			nextOrder(),
+			content
+		)
 		return
 	end
 
 	local row = buttonRow(nextOrder(), content)
-	local captureButton = Components.Button({
+	Components.Button({
 		text = "Take screenshot",
 		style = "primary",
 		onClick = function()
@@ -1245,13 +1353,26 @@ function App:_render_captures(content: Frame, maid: any)
 		end,
 		parent = row,
 	})
-	local _ = captureButton
-	if #captures.list > 0 then
+	local unstarred = captures:CountUnstarred()
+	if unstarred > 0 then
 		Components.Button({
-			text = "Clear all",
-			style = "ghost",
+			text = if self._confirmClear then string.format("Confirm clear (%d)", unstarred) else "Clear unstarred",
+			style = if self._confirmClear then "danger" else "ghost",
 			onClick = function()
-				captures:Clear()
+				if self._confirmClear then
+					self._confirmClear = false
+					captures:ClearUnstarred()
+					self:Notify("Cleared unstarred captures.")
+				else
+					self._confirmClear = true
+					self:_renderPage("captures")
+					task.delay(3, function()
+						if self._confirmClear then
+							self._confirmClear = false
+							self:_renderPage("captures")
+						end
+					end)
+				end
 			end,
 			parent = row,
 		})
@@ -1287,6 +1408,12 @@ function App:_render_captures(content: Frame, maid: any)
 		label.TextXAlignment = Enum.TextXAlignment.Center
 		return
 	end
+
+	hint(
+		"Star a capture to keep it between sessions. Click one to view it or jump back to its view.",
+		nextOrder(),
+		content
+	)
 
 	local grid = new("Frame", {
 		Name = "Grid",
@@ -1329,10 +1456,30 @@ function App:_render_captures(content: Frame, maid: any)
 		end)
 		thumb.Activated:Connect(function()
 			self._selectedCapture = capture.id
+			self._confirmCaptureDelete = false
 			self:_renderPage("captures")
 		end)
+		starBadge(capture, function()
+			self:_toggleStar(capture)
+		end, thumb)
+		if not captures:IsFromThisPlace(capture) then
+			new("TextLabel", {
+				Text = capture.placeName,
+				BackgroundColor3 = Color3.fromRGB(20, 20, 24),
+				BackgroundTransparency = 0.35,
+				TextColor3 = Color3.new(1, 1, 1),
+				FontFace = Theme.Font.Regular,
+				TextSize = 11,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 6, 1, -6),
+				Size = UDim2.new(1, -12, 0, 16),
+				ZIndex = 3,
+				Children = { Components.Corner(4), Components.Padding(0, 4, 0, 4) },
+				Parent = thumb,
+			})
+		end
 	end
-	local _ = maid
 end
 
 -- Controller page ------------------------------------------------------------------------

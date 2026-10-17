@@ -164,6 +164,12 @@ function CameraController:LevelView()
 	self:_startTransition({ cframe = CFrame.new(camera.CFrame.Position) * CFrame.fromEulerAnglesYXZ(0, ry, 0) })
 end
 
+-- Glides to an exact saved view (e.g. a screenshot's camera).
+function CameraController:GoToView(cframe: CFrame, fov: number)
+	self:_startTransition({ cframe = cframe, fov = math.clamp(fov, 1, 120) })
+	self.Feedback:Fire("fov", fov)
+end
+
 function CameraController:ReturnToStart(): boolean
 	if not self.startCFrame then
 		return false

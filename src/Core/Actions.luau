@@ -198,10 +198,10 @@ Actions.List = {
 	{
 		id = "toggleController",
 		name = "Toggle controller mode",
-		description = "Works even while controller mode is off",
+		description = "Click both sticks. Works even while off",
 		category = "Plugin",
 		kind = "press",
-		default = { key = "ButtonStart", mod = "ButtonSelect" },
+		default = { key = "ButtonR3", mod = "ButtonL3" },
 		alwaysOn = true,
 	},
 	{

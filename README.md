@@ -8,9 +8,10 @@
 
 ## Features
 
-- Toggle controller mode from the toolbar, a keyboard shortcut, or **View + Menu** on the pad
+- Toggle controller mode from the toolbar, a keyboard shortcut, or by clicking both sticks
 - Smooth fly camera with roll, FOV zoom, speed steps, boost and precision
-- Screenshots straight from the controller
+- Screenshots from the controller, with one-click return to any shot's exact view
+- Star screenshots to keep them: they upload to your account and land on exportable planes in ServerStorage
 - Rebind any button, including two-button combos
 - Save layouts as profiles and switch between them from the pad
 - Detects Xbox, PlayStation and generic controllers automatically
@@ -29,7 +30,7 @@
 | A | Frame selection |
 | X | Screenshot |
 | Y | Reset camera |
-| View + Menu | Toggle controller mode |
+| Click both sticks | Toggle controller mode |
 
 ## Build
 

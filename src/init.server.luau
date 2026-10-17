@@ -35,7 +35,7 @@ local maid = Maid.new()
 local runtime = {}
 runtime.store = Store.new(plugin)
 runtime.gamepad = Gamepad.new()
-runtime.captures = Captures.new()
+runtime.captures = Captures.new(runtime.store)
 runtime.camera = CameraController.new()
 runtime.resolver = Resolver.new()
 runtime.hud = Hud.new(runtime.gamepad)
@@ -196,12 +196,49 @@ function runtime:TakeScreenshot()
 	end, function(capture, err)
 		if capture then
 			hud:Flash()
-			hud:Toast("Screenshot saved to Captures")
+			if store:GetSetting("autoStar") then
+				hud:Toast("Screenshot taken · saving…")
+				runtime:StarCapture(capture.id)
+			else
+				hud:Toast("Screenshot added to Captures")
+			end
 		else
 			hud:Toast("Screenshot failed")
 			warn("[Studio Controller Pro] Screenshot failed:", err)
 		end
 	end)
+end
+
+-- Fired with a user-facing message after a star finishes (or fails).
+runtime.Notice = Signal.new()
+maid:Give(runtime.Notice)
+
+function runtime:StarCapture(id: number)
+	runtime.captures:Star(id, function(err)
+		local capture = runtime.captures:Get(id)
+		local message = if err
+			then err
+			else "Saved “" .. (if capture then capture.name else "capture") .. "” to ServerStorage."
+		if err then
+			warn("[Studio Controller Pro]", err)
+		end
+		hud:Toast(if err then "Couldn't save capture" else "Capture saved")
+		runtime.Notice:Fire(message)
+	end)
+end
+
+-- Glides back to a capture's exact view. Returns an error message if the
+-- capture came from a different place.
+function runtime:GoToCapture(id: number): string?
+	local capture = runtime.captures:Get(id)
+	if not capture then
+		return "That capture no longer exists."
+	end
+	if not runtime.captures:IsFromThisPlace(capture) then
+		return "That view is from “" .. capture.placeName .. "”, not this place."
+	end
+	camera:GoToView(capture.cframe, capture.fov)
+	return nil
 end
 
 -- Actions ----------------------------------------------------------------------
@@ -296,8 +333,23 @@ local function axis(output: Resolver.Output, positive: string, negative: string)
 	return (output.analog[positive] or 0) - (output.analog[negative] or 0)
 end
 
+local IDLE_INPUT: CameraController.StepInput = {
+	move = Vector2.zero,
+	look = Vector2.zero,
+	vertical = 0,
+	roll = 0,
+	fov = 0,
+	boost = false,
+	precision = false,
+}
+
 local function onFrame(dt: number)
 	local suspended = not windowFocused or UserInputService:GetFocusedTextBox() ~= nil
+	-- Transitions started from the panel (e.g. "Go to view") play even while
+	-- controller mode is off.
+	if not runtime._on and camera.transition then
+		camera:Step(dt, IDLE_INPUT, activeProfile().tuning)
+	end
 	-- Skip all work when nothing could use the pad.
 	local listening = runtime._on
 		or runtime._capture ~= nil
@@ -305,15 +357,7 @@ local function onFrame(dt: number)
 		or (app and app:IsShowingTester())
 	if not listening or not gamepad:IsConnected() then
 		if runtime._on then
-			camera:Step(dt, {
-				move = Vector2.zero,
-				look = Vector2.zero,
-				vertical = 0,
-				roll = 0,
-				fov = 0,
-				boost = false,
-				precision = false,
-			}, activeProfile().tuning)
+			camera:Step(dt, IDLE_INPUT, activeProfile().tuning)
 		end
 		hud:Update()
 		return

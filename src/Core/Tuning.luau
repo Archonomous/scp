@@ -201,6 +201,14 @@ Tuning.Global = {
 		default = true,
 	},
 	{
+		key = "autoStar",
+		label = "Save every screenshot",
+		description = "Star new screenshots automatically: uploads them and adds a plane in ServerStorage",
+		section = "General",
+		kind = "bool",
+		default = false,
+	},
+	{
 		key = "enableOnStart",
 		label = "Turn on when Studio opens",
 		section = "General",

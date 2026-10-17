@@ -16,9 +16,10 @@ local Signal = require(script.Parent.Parent.Util.Signal)
 
 local SETTINGS_KEY = "StudioControllerPro.Data.v1"
 local EXPORT_FORMAT = "StudioControllerPro.Profile"
-local SCHEMA = 1
+local SCHEMA = 2
 local MAX_PROFILES = 32
 local MAX_NAME_LENGTH = 32
+local MAX_STARRED = 200
 
 export type Binding = Actions.Binding
 
@@ -137,14 +138,38 @@ local function presetTuning(presetId: string?): { [string]: any }
 	return Tuning.Defaults(preset and preset.tuning)
 end
 
-local function sanitizeProfile(raw: any, fallbackName: string): Profile
+-- Bindings that were defaults in an older schema and should move to the
+-- current default. Keyed by the schema they were replaced in.
+local LEGACY_DEFAULTS = {
+	-- View + Menu is intercepted by Windows / Steam controller shortcuts.
+	[2] = { toggleController = { key = "ButtonStart", mod = "ButtonSelect" } },
+}
+
+local function isLegacyDefault(actionId: string, raw: any, fromSchema: number): boolean
+	if type(raw) ~= "table" then
+		return false
+	end
+	for schema, bindings in LEGACY_DEFAULTS do
+		local legacy = bindings[actionId]
+		if fromSchema < schema and legacy and raw.key == legacy.key and raw.mod == legacy.mod then
+			return true
+		end
+	end
+	return false
+end
+
+local function sanitizeProfile(raw: any, fallbackName: string, fromSchema: number?): Profile
 	raw = if type(raw) == "table" then raw else {}
 	local preset = if type(raw.preset) == "string" and PRESETS_BY_ID[raw.preset] then raw.preset else nil
 	local defaults = presetBindings(preset)
 	local bindings = {}
 	local rawBindings = if type(raw.bindings) == "table" then raw.bindings else {}
 	for _, action in Actions.List do
-		local binding = sanitizeBinding(action, rawBindings[action.id])
+		local rawBinding = rawBindings[action.id]
+		if isLegacyDefault(action.id, rawBinding, fromSchema or SCHEMA) then
+			rawBinding = nil
+		end
+		local binding = sanitizeBinding(action, rawBinding)
 		if binding == nil then
 			binding = defaults[action.id]
 		end
@@ -189,6 +214,30 @@ local function defaultData()
 		profiles = profiles,
 		settings = Tuning.GlobalDefaults(),
 		runtime = { speedIndex = 5, gamepad = "Auto" },
+		starred = {},
+	}
+end
+
+-- Starred captures are uploaded images plus the camera view they were taken
+-- from. CFrames are stored as their 12 components.
+local function sanitizeStarred(raw: any)
+	if type(raw) ~= "table" or type(raw.assetId) ~= "number" or type(raw.cframe) ~= "table" or #raw.cframe ~= 12 then
+		return nil
+	end
+	for _, component in raw.cframe do
+		if type(component) ~= "number" then
+			return nil
+		end
+	end
+	return {
+		assetId = raw.assetId,
+		name = if type(raw.name) == "string" then raw.name else "Capture",
+		time = if type(raw.time) == "number" then raw.time else 0,
+		fov = if type(raw.fov) == "number" then math.clamp(raw.fov, 1, 120) else 70,
+		aspect = if type(raw.aspect) == "number" and raw.aspect > 0 then raw.aspect else 16 / 9,
+		cframe = table.clone(raw.cframe),
+		placeKey = if type(raw.placeKey) == "string" then raw.placeKey else "",
+		placeName = if type(raw.placeName) == "string" then raw.placeName else "",
 	}
 end
 
@@ -199,11 +248,12 @@ local function sanitizeData(raw: any)
 	local data = defaultData()
 	data.profiles = {}
 	local seenIds = {}
+	local fromSchema = if type(raw.schema) == "number" then raw.schema else 1
 	for index, rawProfile in raw.profiles do
 		if #data.profiles >= MAX_PROFILES then
 			break
 		end
-		local profile = sanitizeProfile(rawProfile, "Profile " .. index)
+		local profile = sanitizeProfile(rawProfile, "Profile " .. index, fromSchema)
 		if seenIds[profile.id] then
 			profile.id = HttpService:GenerateGUID(false)
 		end
@@ -223,6 +273,15 @@ local function sanitizeData(raw: any)
 	end
 	if type(rawRuntime.gamepad) == "string" then
 		data.runtime.gamepad = rawRuntime.gamepad
+	end
+
+	if type(raw.starred) == "table" then
+		for _, entry in raw.starred do
+			local clean = sanitizeStarred(entry)
+			if clean and #data.starred < MAX_STARRED then
+				table.insert(data.starred, clean)
+			end
+		end
 	end
 	return data
 end
@@ -508,6 +567,38 @@ function Store:SetRuntime(key: string, value: any)
 	self:_changed("runtime", key)
 end
 
+-- Starred captures -------------------------------------------------------------
+
+function Store:GetStarred(): { any }
+	return self.data.starred
+end
+
+function Store:CanStar(): boolean
+	return #self.data.starred < MAX_STARRED
+end
+
+function Store:AddStarred(entry: any): boolean
+	local clean = sanitizeStarred(entry)
+	if not clean or not self:CanStar() then
+		return false
+	end
+	table.insert(self.data.starred, 1, clean)
+	self:_changed("starred")
+	return true
+end
+
+function Store:RemoveStarred(assetId: number)
+	for index, entry in self.data.starred do
+		if entry.assetId == assetId then
+			table.remove(self.data.starred, index)
+			self:_changed("starred")
+			return
+		end
+	end
+end
+
+Store.MaxStarred = MAX_STARRED
+
 -- Import / export ------------------------------------------------------------
 
 function Store:Export(profileId: string): string?
@@ -550,7 +641,7 @@ function Store:Import(json: string): (Profile?, string?)
 		name = decoded.name,
 		bindings = decoded.bindings,
 		tuning = decoded.tuning,
-	}, "Imported profile")
+	}, "Imported profile", if type(decoded.version) == "number" then decoded.version else 1)
 	profile.id = HttpService:GenerateGUID(false)
 	profile.name = self:_uniqueName(profile.name)
 	table.insert(self.data.profiles, profile)

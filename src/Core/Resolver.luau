@@ -124,7 +124,10 @@ function Resolver:Resolve(frame: any, dt: number, onlyActions: { [string]: boole
 				table.insert(output.fired, actionId)
 			end
 		elseif kind == "press" then
-			if pressed[key] and modOk and not suppressed then
+			-- Combos fire whichever of the two buttons lands last, so chords
+			-- like clicking both sticks don't depend on exact timing.
+			local justPressed = pressed[key] or (mod ~= nil and pressed[mod] and down[key])
+			if justPressed and modOk and not suppressed then
 				table.insert(output.fired, actionId)
 			end
 		elseif kind == "repeat" then
