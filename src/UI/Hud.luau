@@ -196,7 +196,7 @@ function Hud.new(gamepad: any)
 	self._guide = guide
 
 	-- Reticle -----------------------------------------------------------------------
-	-- Its own ScreenGui so it stays up when the status HUD is hidden. A dot marks
+	-- Its own ScreenGui so the button guide can show without it. A dot marks
 	-- the centre; a ring appears when there's something to select, and closes
 	-- in while the select gesture is held.
 	local reticleGui = new("ScreenGui", {
@@ -252,9 +252,11 @@ function Hud:_refreshVisibility()
 end
 
 function Hud:_refreshReticle()
+	-- Hidden along with the HUD (the Toggle HUD action), not just by its setting.
 	self._reticleGui.Enabled = self._controllerOn
 		and self._connected
 		and not self._captureHidden
+		and self._visible
 		and self._reticleEnabled
 end
 

@@ -187,7 +187,7 @@ Tuning.Global = {
 	{
 		key = "hudEnabled",
 		label = "Show HUD",
-		description = "Status and notifications over the viewport",
+		description = "Status, notifications and the reticle over the viewport",
 		section = "General",
 		kind = "bool",
 		default = true,

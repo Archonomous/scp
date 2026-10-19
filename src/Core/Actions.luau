@@ -222,7 +222,7 @@ Actions.List = {
 	{
 		id = "toggleHud",
 		name = "Toggle HUD",
-		description = "Show or hide the on-screen status",
+		description = "Show or hide the on-screen status and reticle",
 		category = "Plugin",
 		kind = "press",
 		default = { key = "ButtonSelect" },
