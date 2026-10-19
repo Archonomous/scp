@@ -22,6 +22,9 @@ local MAX_PITCH = math.rad(89)
 local MIN_FOV, MAX_FOV = 1, 120
 local EPSILON = 1e-3
 local TRANSITION_TIME = 0.45
+local ORBIT_ZOOM_RATE = 1.2
+local ORBIT_MIN_DISTANCE = 1
+local ORBIT_MAX_DISTANCE = 5000
 
 local CameraController = {}
 CameraController.__index = CameraController
@@ -60,6 +63,7 @@ function CameraController.new()
 	self.lookRate = Vector2.zero
 	self.rollRate = 0
 	self.fovRate = 0
+	self.zoomRate = 0
 	self.transition = nil
 	self.startCFrame = nil :: CFrame?
 	-- While set, the right stick orbits this point instead of turning in place.
@@ -95,6 +99,7 @@ function CameraController:Begin()
 	self.lookRate = Vector2.zero
 	self.rollRate = 0
 	self.fovRate = 0
+	self.zoomRate = 0
 	self.transition = nil
 	if camera then
 		self.startCFrame = camera.CFrame
@@ -110,6 +115,7 @@ function CameraController:End(levelHorizon: boolean)
 	self.lookRate = Vector2.zero
 	self.rollRate = 0
 	self.fovRate = 0
+	self.zoomRate = 0
 	self.transition = nil
 	local camera = workspace.CurrentCamera
 	if levelHorizon and camera then
@@ -326,8 +332,8 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 		or math.abs(input.roll) > 0
 		or math.abs(input.fov) > 0
 
-	-- Moving (or rising / sinking) leaves orbit and goes back to flying.
-	if self.orbitCenter and (input.move.Magnitude > 0 or math.abs(input.vertical) > 0) then
+	-- Moving leaves orbit and goes back to flying.
+	if self.orbitCenter and input.move.Magnitude > 0 then
 		self.orbitCenter = nil
 	end
 
@@ -369,7 +375,9 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 		forward, right = flat.LookVector, flat.RightVector
 		up = Vector3.yAxis
 	end
-	local targetVelocity = (right * input.move.X + forward * input.move.Y + up * input.vertical) * speed
+	-- While orbiting, up / down zooms toward or away from the centre instead.
+	local vertical = if self.orbitCenter then 0 else input.vertical
+	local targetVelocity = (right * input.move.X + forward * input.move.Y + up * vertical) * speed
 
 	local moveAlpha = approachAlpha(tuning.moveSmoothing, dt)
 	local lookAlpha = approachAlpha(tuning.lookSmoothing, dt)
@@ -401,13 +409,27 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 		self.rollRate = 0
 	end
 
+	-- Fraction of the orbit distance closed per second, so zoom feels the same
+	-- near and far. Boost and precision scale it like movement.
+	local targetZoomRate = if self.orbitCenter
+		then input.vertical * ORBIT_ZOOM_RATE * (if input.boost then 2 else 1) * precision
+		else 0
+	self.zoomRate += (targetZoomRate - self.zoomRate) * moveAlpha
+	if targetZoomRate == 0 and math.abs(self.zoomRate) < 0.01 then
+		self.zoomRate = 0
+	end
+
 	local targetFovRate = input.fov * tuning.fovSpeed
 	self.fovRate += (targetFovRate - self.fovRate) * moveAlpha
 	if targetFovRate == 0 and math.abs(self.fovRate) < 0.05 then
 		self.fovRate = 0
 	end
 
-	local moving = self.velocity.Magnitude > 0 or self.lookRate.Magnitude > 0 or self.rollRate ~= 0 or self.fovRate ~= 0
+	local moving = self.velocity.Magnitude > 0
+		or self.lookRate.Magnitude > 0
+		or self.rollRate ~= 0
+		or self.fovRate ~= 0
+		or self.zoomRate ~= 0
 	if not moving then
 		return false
 	end
@@ -420,8 +442,9 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 	local center = self.orbitCenter
 	if center then
 		-- Same yaw / pitch as looking around, but the camera swings around the
-		-- centre at a fixed distance so it stays in the middle of the view.
+		-- centre so it stays in the middle of the view. Up / down zooms in and out.
 		local distance = (cframe.Position - center).Magnitude
+		distance = math.clamp(distance * math.exp(-self.zoomRate * dt), ORBIT_MIN_DISTANCE, ORBIT_MAX_DISTANCE)
 		camera.CFrame = CFrame.new(center - rotation.LookVector * distance) * rotation
 		camera.Focus = CFrame.new(center)
 	else

@@ -460,7 +460,7 @@ local function selectTarget(target: Aim.Target?, frame: boolean)
 	Selection:Set({ instance })
 	if frame then
 		camera:FrameSelection()
-		hud:Toast("Framing " .. instance.Name .. " · right stick orbits", glyphFor("target"))
+		hud:Toast("Framing " .. instance.Name .. " · right stick orbits, triggers zoom", glyphFor("target"))
 		haptics:Play("glide")
 	else
 		hud:Toast("Selected " .. instance.Name, glyphFor("target"))
