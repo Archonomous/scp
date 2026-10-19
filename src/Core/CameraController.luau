@@ -62,6 +62,9 @@ function CameraController.new()
 	self.fovRate = 0
 	self.transition = nil
 	self.startCFrame = nil :: CFrame?
+	-- While set, the right stick orbits this point instead of turning in place.
+	-- Set by framing or flying to a target; moving clears it.
+	self.orbitCenter = nil :: Vector3?
 	self.startFov = nil :: number?
 	-- Fired with (kind, value) for HUD feedback: "speed", "fov", "roll".
 	self.Feedback = Signal.new()
@@ -87,6 +90,7 @@ end
 
 function CameraController:Begin()
 	local camera = workspace.CurrentCamera
+	self.orbitCenter = nil
 	self.velocity = Vector3.zero
 	self.lookRate = Vector2.zero
 	self.rollRate = 0
@@ -101,6 +105,7 @@ end
 -- Called when controller mode turns off. Optionally levels the horizon
 -- immediately, since Studio's camera has no notion of roll.
 function CameraController:End(levelHorizon: boolean)
+	self.orbitCenter = nil
 	self.velocity = Vector3.zero
 	self.lookRate = Vector2.zero
 	self.rollRate = 0
@@ -125,6 +130,7 @@ function CameraController:_startTransition(fields: { cframe: CFrame?, roll: numb
 	if not camera then
 		return
 	end
+	self.orbitCenter = nil
 	local rx, ry, rz = camera.CFrame:ToEulerAnglesYXZ()
 	self.transition = {
 		elapsed = 0,
@@ -233,6 +239,7 @@ function CameraController:FrameSelection(): boolean
 	local rx, ry, rz = camera.CFrame:ToEulerAnglesYXZ()
 	self:_startTransition({ cframe = CFrame.new(position) * CFrame.fromEulerAnglesYXZ(rx, ry, rz) })
 	self.transition.focus = center
+	self.orbitCenter = center
 	return true
 end
 
@@ -252,6 +259,7 @@ function CameraController:FlyTo(point: Vector3, standoff: number): boolean
 	local rx, ry, rz = camera.CFrame:ToEulerAnglesYXZ()
 	self:_startTransition({ cframe = CFrame.new(position) * CFrame.fromEulerAnglesYXZ(rx, ry, rz) })
 	self.transition.focus = point
+	self.orbitCenter = point
 	return true
 end
 
@@ -318,12 +326,29 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 		or math.abs(input.roll) > 0
 		or math.abs(input.fov) > 0
 
+	-- Moving (or rising / sinking) leaves orbit and goes back to flying.
+	if self.orbitCenter and (input.move.Magnitude > 0 or math.abs(input.vertical) > 0) then
+		self.orbitCenter = nil
+	end
+
 	if self.transition then
-		if hasInput then
+		-- While orbiting, the glide into place finishes first so the orbit
+		-- starts with the target dead centre.
+		if hasInput and not self.orbitCenter then
 			-- Any deliberate input takes over from a running transition.
 			self.transition = nil
 		else
 			return self:_stepTransition(camera, dt)
+		end
+	end
+
+	-- If the view was turned some other way (e.g. with the mouse), the centre is
+	-- no longer in the middle; drop it rather than jump the camera back.
+	local orbitCenter = self.orbitCenter
+	if orbitCenter then
+		local offset = orbitCenter - camera.CFrame.Position
+		if offset.Magnitude < EPSILON or camera.CFrame.LookVector:Dot(offset.Unit) < 0.995 then
+			self.orbitCenter = nil
 		end
 	end
 
@@ -391,10 +416,20 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 	local pitch = math.clamp(rx + math.rad(self.lookRate.Y) * dt, -MAX_PITCH, MAX_PITCH)
 	local roll = wrapAngle(rz - math.rad(self.rollRate) * dt)
 
-	local focusDistance = (camera.Focus.Position - cframe.Position).Magnitude
-	local newCFrame = CFrame.new(cframe.Position + self.velocity * dt) * CFrame.fromEulerAnglesYXZ(pitch, yaw, roll)
-	camera.CFrame = newCFrame
-	camera.Focus = newCFrame * CFrame.new(0, 0, -math.clamp(focusDistance, 4, 500))
+	local rotation = CFrame.fromEulerAnglesYXZ(pitch, yaw, roll)
+	local center = self.orbitCenter
+	if center then
+		-- Same yaw / pitch as looking around, but the camera swings around the
+		-- centre at a fixed distance so it stays in the middle of the view.
+		local distance = (cframe.Position - center).Magnitude
+		camera.CFrame = CFrame.new(center - rotation.LookVector * distance) * rotation
+		camera.Focus = CFrame.new(center)
+	else
+		local focusDistance = (camera.Focus.Position - cframe.Position).Magnitude
+		local newCFrame = CFrame.new(cframe.Position + self.velocity * dt) * rotation
+		camera.CFrame = newCFrame
+		camera.Focus = newCFrame * CFrame.new(0, 0, -math.clamp(focusDistance, 4, 500))
+	end
 
 	if self.fovRate ~= 0 then
 		local fov = math.clamp(camera.FieldOfView + self.fovRate * dt, MIN_FOV, MAX_FOV)

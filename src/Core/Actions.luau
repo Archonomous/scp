@@ -181,7 +181,7 @@ Actions.List = {
 	{
 		id = "target",
 		name = "Select / fly to target",
-		description = "Tap selects what the reticle is on, double-tap flies to it, hold selects and frames it",
+		description = "Tap selects what the reticle is on, double-tap flies to it, hold selects and frames it (or clears the selection over empty space)",
 		category = "Camera",
 		kind = "hold",
 		default = { key = "ButtonA" },

@@ -441,7 +441,18 @@ end
 
 local function selectTarget(target: Aim.Target?, frame: boolean)
 	local instance = target and target.instance
-	if not instance then
+	if not instance and frame then
+		-- Holding on empty space (or terrain / locked parts) clears the selection.
+		if #Selection:Get() > 0 then
+			Selection:Set({})
+			hud:Toast("Selection cleared", glyphFor("target"))
+			haptics:Play("tick")
+		else
+			hud:Toast("Nothing selected", glyphFor("target"))
+			haptics:Play("limit")
+		end
+		return
+	elseif not instance then
 		hud:Toast(if target then "Can't select that" else "Nothing under the reticle", glyphFor("target"))
 		haptics:Play("limit")
 		return
@@ -449,7 +460,7 @@ local function selectTarget(target: Aim.Target?, frame: boolean)
 	Selection:Set({ instance })
 	if frame then
 		camera:FrameSelection()
-		hud:Toast("Framing " .. instance.Name, glyphFor("target"))
+		hud:Toast("Framing " .. instance.Name .. " · right stick orbits", glyphFor("target"))
 		haptics:Play("glide")
 	else
 		hud:Toast("Selected " .. instance.Name, glyphFor("target"))
