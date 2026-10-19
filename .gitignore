@@ -4,3 +4,4 @@
 sourcemap.json
 .DS_Store
 Thumbs.db
+dist/

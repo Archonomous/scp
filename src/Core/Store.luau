@@ -164,6 +164,7 @@ local function sanitizeProfile(raw: any, fallbackName: string, fromSchema: numbe
 	local defaults = presetBindings(preset)
 	local bindings = {}
 	local rawBindings = if type(raw.bindings) == "table" then raw.bindings else {}
+	local filled = {}
 	for _, action in Actions.List do
 		local rawBinding = rawBindings[action.id]
 		if isLegacyDefault(action.id, rawBinding, fromSchema or SCHEMA) then
@@ -172,8 +173,30 @@ local function sanitizeProfile(raw: any, fallbackName: string, fromSchema: numbe
 		local binding = sanitizeBinding(action, rawBinding)
 		if binding == nil then
 			binding = defaults[action.id]
+			if next(rawBindings) ~= nil then
+				filled[action.id] = true
+			end
 		end
 		bindings[action.id] = binding
+	end
+	-- An action added in a newer version gets its default, unless the user
+	-- already put that input on something else.
+	for actionId in filled do
+		local binding = bindings[actionId]
+		if binding then
+			for otherId, other in bindings do
+				if
+					otherId ~= actionId
+					and not filled[otherId]
+					and other
+					and other.key == binding.key
+					and other.mod == binding.mod
+				then
+					bindings[actionId] = false
+					break
+				end
+			end
+		end
 	end
 
 	local baseTuning = presetTuning(preset)
@@ -213,7 +236,7 @@ local function defaultData()
 		activeProfileId = profiles[1].id,
 		profiles = profiles,
 		settings = Tuning.GlobalDefaults(),
-		runtime = { speedIndex = 5, gamepad = "Auto" },
+		runtime = { speedIndex = 5, gamepad = "Auto", welcomed = false },
 		starred = {},
 	}
 end
@@ -274,6 +297,7 @@ local function sanitizeData(raw: any)
 	if type(rawRuntime.gamepad) == "string" then
 		data.runtime.gamepad = rawRuntime.gamepad
 	end
+	data.runtime.welcomed = rawRuntime.welcomed == true
 
 	if type(raw.starred) == "table" then
 		for _, entry in raw.starred do

@@ -79,6 +79,7 @@ Theme.Icons = {
 	Info = "Shared/Alerts/{theme}/Standard/Information",
 	Warning = "Shared/Alerts/{theme}/Standard/Warning",
 	Check = "Shared/Ribbon/{theme}/Standard/Checkmark",
+	Upload = "Lua/AvatarCompatibilityPreviewer/{theme}/Large/publish",
 	Search = "Lua/DeveloperFramework/{theme}/Standard/Search",
 }
 

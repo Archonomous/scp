@@ -62,6 +62,7 @@ function Hud.new(gamepad: any)
 	self._controllerOn = false
 	self._visible = true
 	self._captureHidden = false
+	self._connected = true
 	self._guideOpen = false
 	self._lastActivity = 0
 	self._toastToken = 0
@@ -95,6 +96,7 @@ function Hud.new(gamepad: any)
 	})
 	self._status = status
 	local badge = new("Frame", {
+		Name = "Badge",
 		Size = UDim2.fromOffset(20, 20),
 		BackgroundColor3 = Theme.Accent,
 		LayoutOrder = 1,
@@ -109,14 +111,30 @@ function Hud.new(gamepad: any)
 		Size = UDim2.fromOffset(14, 14),
 		Parent = badge,
 	})
+	self._badge = badge
 	self._profileLabel = hudText({ Text = "Default", LayoutOrder = 2, Parent = status })
-	separator(3).Parent = status
+	local speedSeparator = separator(3)
+	speedSeparator.Parent = status
 	self._speedLabel = hudText({ Text = "1×", LayoutOrder = 4, Parent = status })
-	separator(5).Parent = status
+	local fovSeparator = separator(5)
+	fovSeparator.Parent = status
 	self._fovLabel = hudText({ Text = "FOV 70°", LayoutOrder = 6, Parent = status })
 	self._rollSeparator = separator(7)
 	self._rollSeparator.Parent = status
 	self._rollLabel = hudText({ Text = "Roll 0°", LayoutOrder = 8, Parent = status })
+	self._levelSeparator = separator(9)
+	self._levelSeparator.Parent = status
+	self._levelLabel = hudText({ Text = "Level", LayoutOrder = 10, Parent = status })
+	-- Shown instead of the readouts while no controller is connected.
+	self._waitingLabel = hudText({
+		Text = "No controller connected · plug in or pair one to fly",
+		LayoutOrder = 11,
+		Parent = status,
+	})
+	self._readouts = { self._profileLabel, speedSeparator, self._speedLabel, fovSeparator, self._fovLabel }
+	self._showRoll = false
+	self._showLevel = false
+	self:_applyReadouts()
 
 	-- Toast -----------------------------------------------------------------------
 	local toast = new("CanvasGroup", {
@@ -180,12 +198,37 @@ function Hud.new(gamepad: any)
 end
 
 function Hud:_refreshVisibility()
-	-- The button guide is shown on request even when the status HUD is hidden.
-	self.Gui.Enabled = self._controllerOn and not self._captureHidden and (self._visible or self._guideOpen)
-	self._status.Visible = self._visible
+	-- The button guide is shown on request even when the status HUD is hidden,
+	-- and the missing-controller notice always shows.
+	local warning = not self._connected
+	self.Gui.Enabled = self._controllerOn and not self._captureHidden and (self._visible or self._guideOpen or warning)
+	self._status.Visible = self._visible or warning
 	if not self._visible then
 		self._toast.Visible = false
 	end
+end
+
+function Hud:_applyReadouts()
+	local connected = self._connected
+	for _, readout in self._readouts do
+		readout.Visible = connected
+	end
+	self._rollLabel.Visible = connected and self._showRoll
+	self._rollSeparator.Visible = connected and self._showRoll
+	self._levelLabel.Visible = connected and self._showLevel
+	self._levelSeparator.Visible = connected and self._showLevel
+	self._waitingLabel.Visible = not connected
+	self._badge.BackgroundColor3 = if connected then Theme.Accent else Color3.fromRGB(196, 140, 30)
+end
+
+function Hud:SetConnected(connected: boolean)
+	if self._connected == connected then
+		return
+	end
+	self._connected = connected
+	self:_applyReadouts()
+	self:_refreshVisibility()
+	self:Poke()
 end
 
 function Hud:SetControllerOn(on: boolean)
@@ -223,12 +266,16 @@ function Hud:Update()
 	if not self.Gui.Enabled then
 		return
 	end
-	if os.clock() - self._lastActivity > IDLE_DELAY and self._status.GroupTransparency == 0 then
+	if self._connected and os.clock() - self._lastActivity > IDLE_DELAY and self._status.GroupTransparency == 0 then
 		TweenService:Create(self._status, SLOW, { GroupTransparency = IDLE_TRANSPARENCY }):Play()
 	end
 end
 
-function Hud:SetStatus(status: { profile: string?, speed: number?, fov: number?, roll: number? })
+function Hud:SetStatus(status: { profile: string?, speed: number?, fov: number?, roll: number?, level: boolean? })
+	if status.level ~= nil then
+		self._showLevel = status.level
+		self:_applyReadouts()
+	end
 	if status.profile then
 		self._profileLabel.Text = status.profile
 	end
@@ -243,8 +290,10 @@ function Hud:SetStatus(status: { profile: string?, speed: number?, fov: number?,
 	if status.roll then
 		local roll = math.round(status.roll)
 		local showRoll = roll ~= 0
-		self._rollLabel.Visible = showRoll
-		self._rollSeparator.Visible = showRoll
+		if showRoll ~= self._showRoll then
+			self._showRoll = showRoll
+			self:_applyReadouts()
+		end
 		self._rollLabel.Text = string.format("Roll %d°", roll)
 	end
 end

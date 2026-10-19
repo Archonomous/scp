@@ -107,6 +107,29 @@ local function bindingText(gamepad: any, binding: any): string
 	return text
 end
 
+local function hint(text: string, order: number, parent: Instance): TextLabel
+	return Components.Text({
+		Text = text,
+		TextWrapped = true,
+		TextSize = Theme.TextSize.Small,
+		Color = C.DimmedText,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+		Parent = parent,
+	})
+end
+
+local function buttonRow(order: number, parent: Instance): Frame
+	return new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, Theme.RowHeight),
+		LayoutOrder = order,
+		Children = { Components.List(Enum.FillDirection.Horizontal, 6) },
+		Parent = parent,
+	})
+end
+
 -- App ---------------------------------------------------------------------------
 
 function App.new(plugin: Plugin, runtime: any)
@@ -214,7 +237,7 @@ function App.new(plugin: Plugin, runtime: any)
 	Components.SetTooltipHost(tooltipLayer)
 
 	-- Store / device subscriptions ----------------------------------------------------
-	self._maid:Give(self._store.Changed:Connect(function(kind, key)
+	self._maid:Give(self._store.Changed:Connect(function(kind, key, tuningKey)
 		if kind == "profile" or kind == "profiles" then
 			self:_renderProfilePicker()
 			self:_renderPage("bindings")
@@ -222,6 +245,13 @@ function App.new(plugin: Plugin, runtime: any)
 			self:_renderPage("profiles")
 		elseif kind == "bindings" then
 			self:_renderPage("bindings")
+		elseif kind == "tuning" then
+			-- Keep controls in sync with changes made from the pad.
+			local profile = self._store:GetActiveProfile()
+			local control = self._tuningControls and self._tuningControls[tuningKey]
+			if control and key == profile.id then
+				control.Set(profile.tuning[tuningKey])
+			end
 		elseif kind == "settings" then
 			self:_syncSettings()
 		elseif kind == "runtime" and key == "gamepad" then
@@ -262,7 +292,272 @@ function App.new(plugin: Plugin, runtime: any)
 		self:_renderPage(tab.id)
 	end
 	self:SelectTab("bindings")
+	if not self._store:GetRuntime("welcomed") then
+		self:ShowWelcome()
+	end
 	return self
+end
+
+-- Welcome ----------------------------------------------------------------------------
+-- Shown over the tabs on first run, and from the Controller tab on request.
+
+function App:ShowWelcome()
+	if not self._welcome then
+		local scroller, content = Components.Page("Welcome")
+		scroller.Visible = true
+		local host = new("Frame", {
+			Name = "Welcome",
+			Position = UDim2.fromOffset(0, self._headerHeight),
+			Size = UDim2.new(1, 0, 1, -self._headerHeight),
+			ZIndex = 20,
+			Theme = { BackgroundColor3 = C.MainBackground },
+			Parent = self._root,
+		})
+		new("Frame", {
+			Size = UDim2.new(1, 0, 0, 1),
+			Theme = { BackgroundColor3 = C.Border },
+			Parent = host,
+		})
+		scroller.Parent = host
+		local maid = Maid.new()
+		self._welcome = { host = host, content = content, maid = maid }
+		maid:Give(self._gamepad.Changed:Connect(function()
+			self:_renderWelcome()
+		end))
+		maid:Give(self._store.Changed:Connect(function(kind)
+			if kind == "profile" or kind == "bindings" or kind == "profiles" then
+				self:_renderWelcome()
+			end
+		end))
+		maid:Give(Theme.OnChanged(function()
+			self:_renderWelcome()
+		end))
+		maid:Give(self._runtime.StateChanged:Connect(function()
+			self:_renderWelcome()
+		end))
+	end
+	self:CancelCapture()
+	self:_renderWelcome()
+end
+
+function App:DismissWelcome()
+	local welcome = self._welcome
+	if welcome then
+		self._welcome = nil
+		welcome.maid:Clean()
+		welcome.host:Destroy()
+	end
+	self._store:SetRuntime("welcomed", true)
+end
+
+function App:IsShowingWelcome(): boolean
+	return self._welcome ~= nil
+end
+
+local function welcomeStep(number: number, title: string, order: number, parent: Instance): Frame
+	local card = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+		Theme = { BackgroundColor3 = C.InputFieldBackground },
+		Children = { Components.Corner(6), Components.Padding(10, 12, 12, 12) },
+		Parent = parent,
+	})
+	Components.Stroke(C.Border).Parent = card
+	local badge = new("Frame", {
+		Size = UDim2.fromOffset(22, 22),
+		BackgroundColor3 = Theme.Accent,
+		Children = { Components.Corner(11) },
+		Parent = card,
+	})
+	new("TextLabel", {
+		Text = tostring(number),
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		FontFace = Theme.Font.Bold,
+		TextSize = Theme.TextSize.Small,
+		TextColor3 = Color3.new(1, 1, 1),
+		Parent = badge,
+	})
+	local body = new("Frame", {
+		Name = "Body",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(34, 0),
+		Size = UDim2.new(1, -34, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Children = { Components.List(Enum.FillDirection.Vertical, 6) },
+		Parent = card,
+	})
+	Components.Text({
+		Text = title,
+		FontFace = Theme.Font.Medium,
+		Size = UDim2.new(1, 0, 0, 22),
+		LayoutOrder = 1,
+		Parent = body,
+	})
+	return body
+end
+
+-- A row of glyphs for a binding followed by a short label.
+function App:_glyphLine(binding: any, label: string, order: number, parent: Instance)
+	local row = new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 22),
+		LayoutOrder = order,
+		Children = {
+			Components.List(Enum.FillDirection.Horizontal, 6, { VerticalAlignment = Enum.VerticalAlignment.Center }),
+		},
+		Parent = parent,
+	})
+	if binding then
+		local glyphs = new("Frame", {
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 1, 0),
+			LayoutOrder = 1,
+			Children = {
+				Components.List(
+					Enum.FillDirection.Horizontal,
+					2,
+					{ VerticalAlignment = Enum.VerticalAlignment.Center }
+				),
+			},
+			Parent = row,
+		})
+		Glyphs.Render(glyphs, self._gamepad, binding, { size = 20 })
+	end
+	Components.Text({
+		Text = if binding then label else "Not bound in this profile",
+		Color = C.SubText,
+		TextSize = Theme.TextSize.Small,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 1, 0),
+		LayoutOrder = 2,
+		Parent = row,
+	})
+end
+
+function App:_renderWelcome()
+	local welcome = self._welcome
+	if not welcome then
+		return
+	end
+	local content = welcome.content
+	for _, child in content:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	local gamepad = self._gamepad
+	local bindings = self._store:GetActiveProfile().bindings
+
+	local intro = new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 1,
+		Children = {
+			Components.Padding(8, 0, 4, 0),
+			Components.List(Enum.FillDirection.Vertical, 4, { HorizontalAlignment = Enum.HorizontalAlignment.Center }),
+		},
+		Parent = content,
+	})
+	local logo = new("ImageLabel", {
+		Image = Theme.GamepadIcon,
+		BackgroundColor3 = Theme.Accent,
+		Size = UDim2.fromOffset(56, 56),
+		LayoutOrder = 1,
+		Children = { Components.Corner(12) },
+		Parent = intro,
+	})
+	task.spawn(function()
+		if Theme.ToolbarIcon and Theme.IsAssetAvailable(Theme.ToolbarIcon) and logo.Parent then
+			logo.Image = Theme.ToolbarIcon
+			logo.BackgroundTransparency = 1
+		end
+	end)
+	new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(1, 4), LayoutOrder = 2, Parent = intro })
+	Components.Text({
+		Text = "Welcome to Studio Controller Pro",
+		FontFace = Theme.Font.Bold,
+		TextSize = Theme.TextSize.Heading,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 3,
+		Parent = intro,
+	})
+	local tagline = hint("Fly the edit camera with a gamepad. Three steps to get going:", 4, intro)
+	tagline.TextXAlignment = Enum.TextXAlignment.Center
+
+	-- 1. Connect.
+	local connect = welcomeStep(1, "Connect a controller", 2, content)
+	local status = new("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 18),
+		LayoutOrder = 2,
+		Children = {
+			Components.List(Enum.FillDirection.Horizontal, 6, { VerticalAlignment = Enum.VerticalAlignment.Center }),
+		},
+		Parent = connect,
+	})
+	local connected = gamepad:IsConnected()
+	local dot = new("Frame", {
+		Size = UDim2.fromOffset(8, 8),
+		LayoutOrder = 1,
+		Children = { Components.Corner(4) },
+		Parent = status,
+	})
+	if connected then
+		dot.BackgroundColor3 = Color3.fromRGB(45, 190, 110)
+	else
+		dot.BackgroundColor3 = Color3.fromRGB(196, 140, 30)
+	end
+	Components.Text({
+		Text = if connected then gamepad:DisplayName() .. " connected" else "Waiting for a controller…",
+		TextSize = Theme.TextSize.Small,
+		Color = if connected then C.MainText else C.SubText,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 1, 0),
+		LayoutOrder = 2,
+		Parent = status,
+	})
+	if not connected then
+		hint("Plug in or pair an Xbox, PlayStation or other gamepad. It's detected automatically.", 3, connect)
+	end
+
+	-- 2. Toggle.
+	local start = welcomeStep(2, "Turn on controller mode", 3, content)
+	self:_glyphLine(bindings.toggleController, "click both sticks", 2, start)
+	hint("Or use the Controller button in the toolbar, or the switch above.", 3, start)
+
+	-- 3. Guide.
+	local guide = welcomeStep(3, "See every button", 4, content)
+	self:_glyphLine(bindings.toggleGuide, "shows the button guide on screen", 2, guide)
+	hint("Rebind anything on the Bindings tab, and save layouts as profiles.", 3, guide)
+
+	local row = buttonRow(5, content)
+	Components.Button({
+		text = if self._runtime:IsOn() then "Got it" else "Start flying",
+		style = "primary",
+		onClick = function()
+			self:DismissWelcome()
+			self._runtime:SetOn(true)
+		end,
+		parent = row,
+	})
+	if not self._runtime:IsOn() then
+		Components.Button({
+			text = "Not now",
+			style = "ghost",
+			onClick = function()
+				self:DismissWelcome()
+			end,
+			parent = row,
+		})
+	end
+	hint("You can open this again from the Controller tab.", 6, content)
 end
 
 -- Header ---------------------------------------------------------------------------
@@ -430,7 +725,7 @@ function App:SelectTab(id: string)
 end
 
 function App:IsShowingTester(): boolean
-	return self.Widget.Enabled and self._currentTab == "controller"
+	return self.Widget.Enabled and self._currentTab == "controller" and not self._welcome
 end
 
 function App:_renderPage(id: string)
@@ -463,29 +758,6 @@ function App:Notify(text: string)
 			self._snackbar.Visible = false
 		end
 	end)
-end
-
-local function hint(text: string, order: number, parent: Instance): TextLabel
-	return Components.Text({
-		Text = text,
-		TextWrapped = true,
-		TextSize = Theme.TextSize.Small,
-		Color = C.DimmedText,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = order,
-		Parent = parent,
-	})
-end
-
-local function buttonRow(order: number, parent: Instance): Frame
-	return new("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, Theme.RowHeight),
-		LayoutOrder = order,
-		Children = { Components.List(Enum.FillDirection.Horizontal, 6) },
-		Parent = parent,
-	})
 end
 
 -- Bindings page ------------------------------------------------------------------------
@@ -837,16 +1109,38 @@ function App:_render_tuning(content: Frame, maid: any)
 	hint("These apply to every profile.", nextOrder(), content)
 	self._settingControls = {}
 	for _, spec in Tuning.Global do
-		self._settingControls[spec.key] = Components.Checkbox({
-			label = spec.label,
-			description = spec.description,
-			value = store:GetSetting(spec.key),
-			onChange = function(value)
-				store:SetSetting(spec.key, value)
-			end,
-			layoutOrder = nextOrder(),
-			parent = content,
-		})
+		local onChange = function(value)
+			store:SetSetting(spec.key, value)
+			-- A sample pulse, so the new strength can be felt right away.
+			if string.sub(spec.key, 1, 9) == "vibration" and store:GetSetting("vibration") then
+				self._runtime.haptics:Play("switch")
+			end
+		end
+		if spec.kind == "bool" then
+			self._settingControls[spec.key] = Components.Checkbox({
+				label = spec.label,
+				description = spec.description,
+				value = store:GetSetting(spec.key),
+				onChange = onChange,
+				layoutOrder = nextOrder(),
+				parent = content,
+			})
+		else
+			self._settingControls[spec.key] = Components.Slider({
+				label = spec.label,
+				description = spec.description,
+				min = spec.min :: number,
+				max = spec.max :: number,
+				step = spec.step :: number,
+				value = store:GetSetting(spec.key),
+				format = function(value)
+					return Tuning.Format(spec, value)
+				end,
+				onChange = onChange,
+				layoutOrder = nextOrder(),
+				parent = content,
+			})
+		end
 	end
 	local _ = maid
 end
@@ -1164,24 +1458,28 @@ end
 
 -- Captures page --------------------------------------------------------------------------
 
-local STAR_ICON = "rbxasset://textures/ui/icon_star-16.png"
+-- Badges sit on dark translucent circles over the image, so they always use
+-- the Dark icon variants.
+local UPLOAD_BADGE = "rbxasset://studio_svg_textures/Lua/AvatarCompatibilityPreviewer/Dark/Large/publish@2x.png"
+local UPLOADED_BADGE = "rbxasset://studio_svg_textures/Shared/Alerts/Dark/Standard/Success@2x.png"
+local BADGE_SURFACE = Color3.fromRGB(20, 20, 24)
 
--- Star toggle drawn over thumbnails and in the viewer.
-local function starBadge(capture: any, onClick: () -> (), parent: Instance): ImageButton
+-- Upload state drawn over thumbnails and the viewer image.
+local function uploadBadge(capture: any, onClick: () -> (), parent: Instance): ImageButton
 	local badge = new("ImageButton", {
-		Name = "Star",
+		Name = "Upload",
 		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -6, 0, 6),
 		Size = UDim2.fromOffset(24, 24),
-		BackgroundColor3 = Color3.fromRGB(20, 20, 24),
+		BackgroundColor3 = BADGE_SURFACE,
 		BackgroundTransparency = 0.35,
 		ZIndex = 3,
 		Children = { Components.Corner(12) },
 		Parent = parent,
 	})
 	local icon = new("ImageLabel", {
-		Image = STAR_ICON,
+		Image = if capture.uploaded then UPLOADED_BADGE else UPLOAD_BADGE,
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -1190,32 +1488,126 @@ local function starBadge(capture: any, onClick: () -> (), parent: Instance): Ima
 		Parent = badge,
 	})
 	if capture.saving then
-		icon.ImageTransparency = 0.5
-		Components.AttachTooltip(badge, "Saving…")
-	elseif capture.starred then
-		Components.AttachTooltip(badge, "Starred: saved to ServerStorage. Click to unstar")
+		icon.ImageTransparency = 0.6
+		Components.AttachTooltip(badge, "Uploading…")
+	elseif capture.uploaded then
+		Components.AttachTooltip(badge, "Uploaded and saved to ServerStorage")
 	else
-		-- Desaturated until starred.
-		icon.ImageColor3 = Color3.fromRGB(150, 150, 150)
-		icon.ImageTransparency = 0.25
-		Components.AttachTooltip(badge, "Star to keep: uploads it and adds a plane in ServerStorage")
+		icon.ImageTransparency = 0.15
+		Components.AttachTooltip(badge, "Upload to keep it: adds an exportable plane in ServerStorage")
 	end
 	badge.Activated:Connect(function()
 		Components.HideTooltip()
-		if not capture.saving then
-			onClick()
-		end
+		onClick()
 	end)
 	return badge
 end
 
-function App:_toggleStar(capture: any)
-	if capture.starred then
-		self._captures:Unstar(capture.id)
-		self:Notify("Unstarred. Its plane in ServerStorage is kept.")
+-- Opens a capture in the viewer, optionally straight to the upload prompt.
+function App:_openCapture(capture: any, confirmUpload: boolean?)
+	self._selectedCapture = capture.id
+	self._confirmCaptureDelete = false
+	self._confirmUpload = if confirmUpload and not capture.uploaded and not capture.saving then capture.id else nil
+	self:_renderPage("captures")
+end
+
+function App:_renderUploadPrompt(selected: any, order: number, content: Frame)
+	local card = new("Frame", {
+		Name = "UploadPrompt",
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+		Theme = { BackgroundColor3 = C.InputFieldBackground },
+		Children = {
+			Components.Corner(6),
+			Components.Padding(10, 12, 12, 12),
+			Components.List(Enum.FillDirection.Vertical, 8),
+		},
+		Parent = content,
+	})
+	Components.Stroke(function()
+		return Theme.Accent
+	end).Parent = card
+	Components.Text({
+		Text = "Upload this capture?",
+		FontFace = Theme.Font.Medium,
+		Size = UDim2.new(1, 0, 0, 18),
+		LayoutOrder = 1,
+		Parent = card,
+	})
+	hint(
+		"It's uploaded to your Roblox account as an image, which goes through moderation and shows up in "
+			.. "Creator Hub. A plane showing it is added to ServerStorage › "
+			.. self._captures.FolderName
+			.. ". Each capture is only uploaded once.",
+		2,
+		card
+	)
+	local row = buttonRow(3, card)
+	Components.Button({
+		text = "Upload",
+		icon = Theme.Icons.Upload,
+		style = "primary",
+		onClick = function()
+			self._confirmUpload = nil
+			self._runtime:UploadCapture(selected.id)
+			self:Notify("Uploading “" .. selected.name .. "”…")
+		end,
+		parent = row,
+	})
+	Components.Button({
+		text = "Cancel",
+		style = "ghost",
+		onClick = function()
+			self._confirmUpload = nil
+			self:_renderPage("captures")
+		end,
+		parent = row,
+	})
+end
+
+function App:_renderUploadedInfo(selected: any, nextOrder: () -> number, content: Frame)
+	local captures = self._captures
+	-- Read-only, selectable, so the id can be copied.
+	local idBox = new("TextBox", {
+		Text = "rbxassetid://" .. tostring(selected.assetId),
+		TextEditable = false,
+		ClearTextOnFocus = false,
+		FontFace = Theme.Font.Regular,
+		TextSize = Theme.TextSize.Small,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1, 0, 0, Theme.RowHeight),
+		LayoutOrder = nextOrder(),
+		Theme = { BackgroundColor3 = C.InputFieldBackground, TextColor3 = C.MainText },
+		Children = { Components.Corner(4), Components.Padding(0, 8, 0, 8) },
+		Parent = content,
+	})
+	Components.Stroke(C.InputFieldBorder).Parent = idBox
+
+	if captures:HasPlane(selected) then
+		hint(
+			"Uploaded. Its plane is in ServerStorage › "
+				.. captures.FolderName
+				.. " with this view in its attributes. Deleting it here only removes it from the gallery.",
+			nextOrder(),
+			content
+		)
 	else
-		self._runtime:StarCapture(capture.id)
-		self:Notify("Uploading “" .. capture.name .. "”…")
+		hint(
+			"Uploaded, but its plane isn't in this place's ServerStorage. Add it back from the existing upload; nothing is uploaded again.",
+			nextOrder(),
+			content
+		)
+		local row = buttonRow(nextOrder(), content)
+		Components.Button({
+			text = "Add plane",
+			icon = Theme.Icons.Add,
+			onClick = function()
+				local err = captures:AddPlane(selected.id)
+				self:Notify(err or ("Added “" .. selected.name .. "” to ServerStorage."))
+			end,
+			parent = row,
+		})
 	end
 end
 
@@ -1237,6 +1629,7 @@ function App:_render_captures(content: Frame, maid: any)
 			style = "ghost",
 			onClick = function()
 				self._selectedCapture = nil
+				self._confirmUpload = nil
 				self:_renderPage("captures")
 			end,
 			parent = row,
@@ -1250,8 +1643,8 @@ function App:_render_captures(content: Frame, maid: any)
 			Children = { Components.Corner(6) },
 			Parent = content,
 		})
-		starBadge(selected, function()
-			self:_toggleStar(selected)
+		uploadBadge(selected, function()
+			self:_openCapture(selected, true)
 		end, preview)
 		-- Fit the preview to the capture's aspect ratio, capped so tall
 		-- viewports don't push everything else off screen.
@@ -1298,17 +1691,16 @@ function App:_render_captures(content: Frame, maid: any)
 			parent = actionRow,
 		})
 		goButton.SetEnabled(captures:IsFromThisPlace(selected))
-		Components.Button({
-			text = if selected.saving then "Saving…" elseif selected.starred then "Unstar" else "Star",
+		local uploadButton = Components.Button({
+			text = if selected.saving then "Uploading…" elseif selected.uploaded then "Uploaded" else "Upload…",
+			icon = if selected.uploaded then Theme.Icons.Check else Theme.Icons.Upload,
 			onClick = function()
-				if not selected.saving then
-					self:_toggleStar(selected)
-				end
+				self:_openCapture(selected, true)
 			end,
 			parent = actionRow,
 		})
-		local deleteButton
-		deleteButton = Components.Button({
+		uploadButton.SetEnabled(not selected.uploaded and not selected.saving and self._confirmUpload ~= selected.id)
+		Components.Button({
 			text = if self._confirmCaptureDelete then "Confirm" else "Delete",
 			icon = Theme.Icons.Delete,
 			style = if self._confirmCaptureDelete then "danger" else "ghost",
@@ -1316,6 +1708,7 @@ function App:_render_captures(content: Frame, maid: any)
 				if self._confirmCaptureDelete then
 					self._confirmCaptureDelete = false
 					self._selectedCapture = nil
+					self._confirmUpload = nil
 					captures:Remove(selected.id)
 				else
 					self._confirmCaptureDelete = true
@@ -1330,17 +1723,20 @@ function App:_render_captures(content: Frame, maid: any)
 			end,
 			parent = actionRow,
 		})
-		local _ = deleteButton
 
-		hint(
-			if selected.starred
-				then "Starred captures are uploaded to your account and placed in ServerStorage › "
-					.. captures.FolderName
-					.. ". The plane keeps this view in its attributes. Deleting here only removes it from the gallery."
-				else "Unstarred captures last for this Studio session. Star it to upload it and add an exportable plane to ServerStorage.",
-			nextOrder(),
-			content
-		)
+		if self._confirmUpload == selected.id and not selected.uploaded and not selected.saving then
+			self:_renderUploadPrompt(selected, nextOrder(), content)
+		elseif selected.uploaded and selected.assetId then
+			self:_renderUploadedInfo(selected, nextOrder, content)
+		elseif selected.saving then
+			hint("Uploading to your account…", nextOrder(), content)
+		else
+			hint(
+				"This capture lasts for this Studio session. Upload it to keep it and add an exportable plane to ServerStorage.",
+				nextOrder(),
+				content
+			)
+		end
 		return
 	end
 
@@ -1353,16 +1749,16 @@ function App:_render_captures(content: Frame, maid: any)
 		end,
 		parent = row,
 	})
-	local unstarred = captures:CountUnstarred()
-	if unstarred > 0 then
+	local unsaved = captures:CountUnsaved()
+	if unsaved > 0 then
 		Components.Button({
-			text = if self._confirmClear then string.format("Confirm clear (%d)", unstarred) else "Clear unstarred",
+			text = if self._confirmClear then string.format("Confirm clear (%d)", unsaved) else "Clear unsaved",
 			style = if self._confirmClear then "danger" else "ghost",
 			onClick = function()
 				if self._confirmClear then
 					self._confirmClear = false
-					captures:ClearUnstarred()
-					self:Notify("Cleared unstarred captures.")
+					captures:ClearUnsaved()
+					self:Notify("Cleared captures that weren't uploaded.")
 				else
 					self._confirmClear = true
 					self:_renderPage("captures")
@@ -1410,7 +1806,7 @@ function App:_render_captures(content: Frame, maid: any)
 	end
 
 	hint(
-		"Star a capture to keep it between sessions. Click one to view it or jump back to its view.",
+		"Upload a capture to keep it between sessions. Click one to view it or jump back to its view.",
 		nextOrder(),
 		content
 	)
@@ -1455,17 +1851,15 @@ function App:_render_captures(content: Frame, maid: any)
 			end
 		end)
 		thumb.Activated:Connect(function()
-			self._selectedCapture = capture.id
-			self._confirmCaptureDelete = false
-			self:_renderPage("captures")
+			self:_openCapture(capture, false)
 		end)
-		starBadge(capture, function()
-			self:_toggleStar(capture)
+		uploadBadge(capture, function()
+			self:_openCapture(capture, true)
 		end, thumb)
 		if not captures:IsFromThisPlace(capture) then
 			new("TextLabel", {
 				Text = capture.placeName,
-				BackgroundColor3 = Color3.fromRGB(20, 20, 24),
+				BackgroundColor3 = BADGE_SURFACE,
 				BackgroundTransparency = 0.35,
 				TextColor3 = Color3.new(1, 1, 1),
 				FontFace = Theme.Font.Regular,
@@ -1736,12 +2130,21 @@ function App:_render_controller(content: Frame, maid: any)
 		nextOrder(),
 		content
 	)
-	local toolbarHint = hint(
+	hint(
 		"Tip: bind a keyboard shortcut to “Toggle Controller Mode” in File › Customize Shortcuts.",
 		nextOrder(),
 		content
 	)
-	local _ = toolbarHint
+	local row = buttonRow(nextOrder(), content)
+	Components.Button({
+		text = "Show welcome",
+		icon = Theme.Icons.Info,
+		style = "ghost",
+		onClick = function()
+			self:ShowWelcome()
+		end,
+		parent = row,
+	})
 end
 
 -- Called every frame by the runtime while the Controller tab is visible.
@@ -1770,6 +2173,9 @@ function App:UpdateTester(frame: any)
 end
 
 function App:Destroy()
+	if self._welcome then
+		self._welcome.maid:Clean()
+	end
 	for _, maid in self._pageMaids do
 		maid:Clean()
 	end

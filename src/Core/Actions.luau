@@ -73,6 +73,14 @@ Actions.List = {
 		kind = "hold",
 		default = { key = "ButtonB" },
 	},
+	{
+		id = "toggleLevelMovement",
+		name = "Toggle level movement",
+		description = "Keep moving parallel to the ground, like shift lock",
+		category = "Movement",
+		kind = "press",
+		default = { key = "ButtonY", mod = "ButtonSelect" },
+	},
 
 	-- Look
 	{

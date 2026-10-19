@@ -20,6 +20,7 @@ local Actions = require(script.Core.Actions)
 local CameraController = require(script.Core.CameraController)
 local Captures = require(script.Core.Captures)
 local Gamepad = require(script.Core.Gamepad)
+local Haptics = require(script.Core.Haptics)
 local Resolver = require(script.Core.Resolver)
 local Store = require(script.Core.Store)
 local App = require(script.UI.App)
@@ -39,7 +40,10 @@ runtime.captures = Captures.new(runtime.store)
 runtime.camera = CameraController.new()
 runtime.resolver = Resolver.new()
 runtime.hud = Hud.new(runtime.gamepad)
+runtime.haptics = Haptics.new(runtime.gamepad, runtime.store)
 runtime.StateChanged = Signal.new()
+-- Fired with a user-facing message for the panel (upload results, warnings).
+runtime.Notice = Signal.new()
 runtime._on = false
 runtime._capture = nil
 
@@ -47,13 +51,16 @@ maid:Give(runtime.gamepad)
 maid:Give(runtime.captures)
 maid:Give(runtime.camera)
 maid:Give(runtime.hud)
+maid:Give(runtime.haptics)
 maid:Give(runtime.StateChanged)
+maid:Give(runtime.Notice)
 
 local store = runtime.store
 local gamepad = runtime.gamepad
 local camera = runtime.camera
 local resolver = runtime.resolver
 local hud = runtime.hud
+local haptics = runtime.haptics
 
 gamepad:SetPreference(store:GetRuntime("gamepad") or "Auto")
 camera.speedIndex = math.clamp(store:GetRuntime("speedIndex") or 5, 1, #CameraController.SpeedSteps)
@@ -81,6 +88,7 @@ local function refreshHudStatus()
 		speed = camera:GetSpeedMultiplier(),
 		fov = if cam then cam.FieldOfView else 70,
 		roll = roll,
+		level = activeProfile().tuning.levelMovement == true,
 	})
 end
 
@@ -104,15 +112,21 @@ function runtime:SetOn(on: boolean)
 	if on then
 		camera:Begin()
 		refreshHudStatus()
+		hud:SetConnected(gamepad:IsConnected())
 		hud:SetControllerOn(true)
 		if gamepad:IsConnected() then
 			hud:Toast("Controller mode on")
+			haptics:Play("on")
 		else
-			hud:Toast("Controller mode on · no controller connected")
+			-- The HUD shows a standing notice; the panel explains what to do.
+			self.Notice:Fire(
+				"Controller mode is on, but no controller is connected. Plug in or pair one to start flying."
+			)
 		end
 	else
 		camera:End(store:GetSetting("levelOnExit"))
 		hud:SetControllerOn(false)
+		haptics:Play("off")
 	end
 	if toolbarButton then
 		toolbarButton:SetActive(on)
@@ -146,6 +160,9 @@ local function finishCapture(binding: any)
 	local capture = runtime._capture
 	runtime._capture = nil
 	if capture then
+		if binding then
+			haptics:Play("confirm")
+		end
 		task.spawn(capture.callback, binding)
 	end
 end
@@ -196,33 +213,37 @@ function runtime:TakeScreenshot()
 	end, function(capture, err)
 		if capture then
 			hud:Flash()
+			haptics:Play("shutter")
 			if store:GetSetting("autoStar") then
-				hud:Toast("Screenshot taken · saving…")
-				runtime:StarCapture(capture.id)
+				hud:Toast("Screenshot taken · uploading…")
+				runtime:UploadCapture(capture.id)
 			else
 				hud:Toast("Screenshot added to Captures")
 			end
 		else
 			hud:Toast("Screenshot failed")
+			haptics:Play("limit")
 			warn("[Studio Controller Pro] Screenshot failed:", err)
 		end
 	end)
 end
 
--- Fired with a user-facing message after a star finishes (or fails).
-runtime.Notice = Signal.new()
-maid:Give(runtime.Notice)
-
-function runtime:StarCapture(id: number)
-	runtime.captures:Star(id, function(err)
+-- Uploads a capture (the panel confirms first). Never re-uploads.
+function runtime:UploadCapture(id: number)
+	runtime.captures:Upload(id, function(err)
 		local capture = runtime.captures:Get(id)
 		local message = if err
 			then err
-			else "Saved “" .. (if capture then capture.name else "capture") .. "” to ServerStorage."
+			else "Uploaded “"
+				.. (if capture then capture.name else "capture")
+				.. "” and added its plane to ServerStorage."
 		if err then
 			warn("[Studio Controller Pro]", err)
 		end
-		hud:Toast(if err then "Couldn't save capture" else "Capture saved")
+		hud:Toast(if err then "Couldn't upload capture" else "Capture uploaded")
+		if not err then
+			haptics:Play("confirm")
+		end
 		runtime.Notice:Fire(message)
 	end)
 end
@@ -251,6 +272,18 @@ end
 local function switchProfile(direction: number)
 	local profile = store:CycleProfile(direction)
 	hud:Toast("Profile: " .. profile.name)
+	haptics:Play("switch")
+end
+
+-- Holding speed up at the top speed repeats; only buzz the limit now and then.
+local lastLimitPulse = 0
+local function stepSpeed(direction: number)
+	if camera:StepSpeed(direction) then
+		haptics:Play("tick")
+	elseif os.clock() - lastLimitPulse > 0.5 then
+		lastLimitPulse = os.clock()
+		haptics:Play("limit")
+	end
 end
 
 local pressHandlers: { [string]: () -> () } = {
@@ -258,42 +291,58 @@ local pressHandlers: { [string]: () -> () } = {
 		runtime:Toggle()
 	end,
 	speedUp = function()
-		camera:StepSpeed(1)
+		stepSpeed(1)
 	end,
 	speedDown = function()
-		camera:StepSpeed(-1)
+		stepSpeed(-1)
 	end,
 	resetSpeed = function()
 		camera:SetSpeedIndex(CameraController.DefaultSpeedIndex)
+		haptics:Play("tick")
 	end,
 	resetRoll = function()
 		camera:ResetRoll()
+		haptics:Play("glide")
 	end,
 	levelView = function()
 		camera:LevelView()
 		hud:Toast("Level view")
+		haptics:Play("glide")
 	end,
 	resetFov = function()
 		camera:ResetFov(activeProfile().tuning.defaultFov)
+		haptics:Play("glide")
 	end,
 	resetCamera = function()
 		local defaultFov = activeProfile().tuning.defaultFov
 		camera:ResetAll(defaultFov)
 		hud:SetStatus({ fov = defaultFov, roll = 0 })
 		hud:Toast("Camera reset", glyphFor("resetCamera"))
+		haptics:Play("glide")
 	end,
 	focusSelection = function()
-		if not camera:FrameSelection() then
+		if camera:FrameSelection() then
+			haptics:Play("glide")
+		else
 			hud:Toast("Nothing selected to frame")
+			haptics:Play("limit")
 		end
 	end,
 	returnToStart = function()
 		if camera:ReturnToStart() then
 			hud:Toast("Returning to start")
+			haptics:Play("glide")
 		end
 	end,
 	screenshot = function()
 		runtime:TakeScreenshot()
+	end,
+	toggleLevelMovement = function()
+		local profile = activeProfile()
+		local level = not profile.tuning.levelMovement
+		store:SetTuning(profile.id, "levelMovement", level)
+		hud:Toast(if level then "Level movement on" else "Level movement off")
+		haptics:Play(if level then "switch" else "tick")
 	end,
 	toggleHud = function()
 		local visible = not store:GetSetting("hudEnabled")
@@ -301,6 +350,7 @@ local pressHandlers: { [string]: () -> () } = {
 		if visible then
 			hud:Toast("HUD shown")
 		end
+		haptics:Play("tick")
 	end,
 	toggleGuide = function()
 		local open = not hud:IsGuideOpen()
@@ -308,6 +358,7 @@ local pressHandlers: { [string]: () -> () } = {
 			refreshGuide()
 		end
 		hud:SetGuideOpen(open)
+		haptics:Play("tick")
 	end,
 	nextProfile = function()
 		switchProfile(1)
@@ -327,6 +378,7 @@ maid:Give(UserInputService.WindowFocused:Connect(function()
 end))
 maid:Give(UserInputService.WindowFocusReleased:Connect(function()
 	windowFocused = false
+	haptics:Stop()
 end))
 
 local function axis(output: Resolver.Output, positive: string, negative: string): number
@@ -415,14 +467,33 @@ maid:Give(store.Changed:Connect(function(kind)
 		if hud:IsGuideOpen() then
 			refreshGuide()
 		end
+	elseif kind == "tuning" then
+		refreshHudStatus()
 	elseif kind == "settings" then
 		hud:SetVisible(store:GetSetting("hudEnabled"))
 	end
 end))
 
+local wasConnected = gamepad:IsConnected()
 maid:Give(gamepad.Changed:Connect(function()
 	if hud:IsGuideOpen() then
 		refreshGuide()
+	end
+	local connected = gamepad:IsConnected()
+	if connected == wasConnected then
+		return
+	end
+	wasConnected = connected
+	haptics:Stop()
+	hud:SetConnected(connected)
+	if runtime._on then
+		if connected then
+			hud:Toast(gamepad:DisplayName() .. " connected")
+			haptics:Play("on")
+		else
+			resolver:Reset()
+			runtime.Notice:Fire("Controller disconnected. Reconnect it to keep flying.")
+		end
 	end
 end))
 
@@ -505,6 +576,11 @@ pressHandlers.openPanel = function()
 	app.Widget.Enabled = true
 end
 
+-- First run: open the panel on its welcome card.
+if not store:GetRuntime("welcomed") then
+	app.Widget.Enabled = true
+end
+
 if store:GetSetting("enableOnStart") then
 	runtime:SetOn(true)
 end
@@ -512,6 +588,7 @@ end
 -- Cleanup ------------------------------------------------------------------------
 
 plugin.Unloading:Connect(function()
+	haptics:Stop()
 	if runtime._on then
 		camera:End(store:GetSetting("levelOnExit"))
 	end

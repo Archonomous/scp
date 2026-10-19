@@ -4,14 +4,16 @@
 
 <h1 align="center">Studio Controller Pro</h1>
 
-<p align="center">Fly the Roblox Studio camera with a gamepad.</p>
+<p align="center">Control Roblox Studio using a game controller in edit mode.</p>
 
 ## Features
 
 - Toggle controller mode from the toolbar, a keyboard shortcut, or by clicking both sticks
 - Smooth fly camera with roll, FOV zoom, speed steps, boost and precision
+- Level movement mode (like shift lock) so looking down never dives
 - Screenshots from the controller, with one-click return to any shot's exact view
-- Star screenshots to keep them: they upload to your account and land on exportable planes in ServerStorage
+- Upload screenshots to keep them: they land on exportable planes in ServerStorage
+- Vibration feedback with adjustable strength
 - Rebind any button, including two-button combos
 - Save layouts as profiles and switch between them from the pad
 - Detects Xbox, PlayStation and generic controllers automatically
@@ -30,6 +32,8 @@
 | A | Frame selection |
 | X | Screenshot |
 | Y | Reset camera |
+| View + Y | Toggle level movement |
+| Menu | Button guide |
 | Click both sticks | Toggle controller mode |
 
 ## Build

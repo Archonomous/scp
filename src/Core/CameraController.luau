@@ -78,8 +78,11 @@ function CameraController:SetSpeedIndex(index: number)
 	self.Feedback:Fire("speed", SPEED_STEPS[index])
 end
 
-function CameraController:StepSpeed(direction: number)
+-- Returns false when already at the slowest / fastest step.
+function CameraController:StepSpeed(direction: number): boolean
+	local previous = self.speedIndex
 	self:SetSpeedIndex(self.speedIndex + direction)
+	return self.speedIndex ~= previous
 end
 
 function CameraController:Begin()
@@ -314,8 +317,15 @@ function CameraController:Step(dt: number, input: StepInput, tuning: { [string]:
 
 	local cframe = camera.CFrame
 	local up = if tuning.worldVertical then Vector3.yAxis else cframe.UpVector
-	local targetVelocity = (cframe.RightVector * input.move.X + cframe.LookVector * input.move.Y + up * input.vertical)
-		* speed
+	local forward, right = cframe.LookVector, cframe.RightVector
+	if tuning.levelMovement then
+		-- Heading only, so pitch and roll never tip movement off the ground plane.
+		local _, heading = cframe:ToEulerAnglesYXZ()
+		local flat = CFrame.fromEulerAnglesYXZ(0, heading, 0)
+		forward, right = flat.LookVector, flat.RightVector
+		up = Vector3.yAxis
+	end
+	local targetVelocity = (right * input.move.X + forward * input.move.Y + up * input.vertical) * speed
 
 	local moveAlpha = approachAlpha(tuning.moveSmoothing, dt)
 	local lookAlpha = approachAlpha(tuning.lookSmoothing, dt)

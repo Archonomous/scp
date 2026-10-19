@@ -3,7 +3,7 @@
 
 	Every capture records the exact camera view it came from, so the camera can
 	glide back to it later. Plugins can't write image files, so a fresh capture
-	lives for the Studio session. Starring one makes it permanent:
+	lives for the Studio session. Uploading one makes it permanent:
 
 	  1. the image is uploaded to the user's account as an Image asset
 	  2. a plane showing it is added to ServerStorage › Studio Controller Pro
@@ -11,6 +11,9 @@
 	     attributes (so it can be exported or moved into the world)
 	  3. it's remembered in plugin settings, so it shows in the gallery in
 	     later sessions
+
+	A capture is only ever uploaded once. If its plane goes missing, it can be
+	added back from the existing asset.
 
 	The HUD is hidden for the frames around the capture so it never appears in
 	the shot.
@@ -40,7 +43,7 @@ export type Capture = {
 	aspect: number,
 	placeKey: string,
 	placeName: string,
-	starred: boolean,
+	uploaded: boolean,
 	assetId: number?,
 	saving: boolean,
 }
@@ -75,7 +78,9 @@ local function captureName(time: number, taken: { [string]: boolean }): string
 	return name
 end
 
-local function fromStarred(entry: any, id: number): Capture
+-- Uploaded captures are persisted in the store (under "starred", the key
+-- earlier versions used).
+local function fromSaved(entry: any, id: number): Capture
 	return {
 		id = id,
 		name = entry.name,
@@ -86,7 +91,7 @@ local function fromStarred(entry: any, id: number): Capture
 		aspect = entry.aspect,
 		placeKey = entry.placeKey,
 		placeName = entry.placeName,
-		starred = true,
+		uploaded = true,
 		assetId = entry.assetId,
 		saving = false,
 	}
@@ -100,7 +105,7 @@ function Captures.new(store: any)
 	self._nextId = 1
 	self.Changed = Signal.new()
 	for _, entry in store:GetStarred() do
-		table.insert(self.list, fromStarred(entry, self._nextId))
+		table.insert(self.list, fromSaved(entry, self._nextId))
 		self._nextId += 1
 	end
 	return self
@@ -175,7 +180,7 @@ function Captures:Take(setOverlaysVisible: (boolean) -> (), callback: (Capture?,
 			aspect = aspect,
 			placeKey = placeKey(),
 			placeName = placeName(),
-			starred = false,
+			uploaded = false,
 			assetId = nil,
 			saving = false,
 		}
@@ -188,19 +193,18 @@ function Captures:Take(setOverlaysVisible: (boolean) -> (), callback: (Capture?,
 end
 
 function Captures:_trimSession()
-	local unstarred = 0
-	for index = 1, #self.list do
-		local capture = self.list[index]
-		if capture and not capture.starred then
-			unstarred += 1
+	local unsaved = 0
+	for _, capture in self.list do
+		if not capture.uploaded then
+			unsaved += 1
 		end
 	end
 	local index = #self.list
-	while unstarred > MAX_SESSION_CAPTURES and index > 0 do
+	while unsaved > MAX_SESSION_CAPTURES and index > 0 do
 		local capture = self.list[index]
-		if not capture.starred and not capture.saving then
+		if not capture.uploaded and not capture.saving then
 			table.remove(self.list, index)
-			unstarred -= 1
+			unsaved -= 1
 		end
 		index -= 1
 	end
@@ -223,7 +227,7 @@ end
 local function upload(capture: Capture): (number?, string?)
 	local okImage, image = pcall(AssetService.CreateEditableImageAsync, AssetService, Content.fromUri(capture.content))
 	if not okImage then
-		return nil, "This capture is no longer available. Captures from an earlier session can't be saved."
+		return nil, "This capture is no longer available. Captures from an earlier session can't be uploaded."
 	end
 	local position = capture.cframe.Position
 	local description = string.format(
@@ -266,6 +270,19 @@ local function capturesFolder(): Folder
 	return folder :: Folder
 end
 
+local function findPlane(assetId: number): BasePart?
+	local folder = ServerStorage:FindFirstChild(FOLDER_NAME)
+	if not folder then
+		return nil
+	end
+	for _, child in folder:GetChildren() do
+		if child:IsA("BasePart") and child:GetAttribute("AssetId") == assetId then
+			return child
+		end
+	end
+	return nil
+end
+
 local function createPlane(capture: Capture, assetId: number)
 	local recording = ChangeHistoryService:TryBeginRecording("Save capture " .. capture.name)
 	local plane = Instance.new("Part")
@@ -293,16 +310,35 @@ local function createPlane(capture: Capture, assetId: number)
 	end
 end
 
--- Stars a capture: upload, add the plane, remember it. Calls back with an
--- error message on failure.
-function Captures:Star(id: number, callback: ((string?) -> ())?)
+-- Whether this capture's plane is in this place's ServerStorage.
+function Captures:HasPlane(capture: Capture): boolean
+	return capture.assetId ~= nil and findPlane(capture.assetId :: number) ~= nil
+end
+
+-- Adds the plane back from the existing upload; never uploads again.
+function Captures:AddPlane(id: number): string?
 	local capture = self:Get(id)
-	if not capture or capture.starred or capture.saving then
+	if not capture or not capture.assetId then
+		return "Upload this capture first."
+	end
+	if findPlane(capture.assetId :: number) then
+		return nil
+	end
+	local ok, err = pcall(createPlane, capture, capture.assetId :: number)
+	self.Changed:Fire()
+	return if ok then nil else "Couldn't add the plane: " .. tostring(err)
+end
+
+-- Uploads a capture, adds its plane and remembers it. Calls back with an
+-- error message on failure. Already-uploaded captures are never re-uploaded.
+function Captures:Upload(id: number, callback: ((string?) -> ())?)
+	local capture = self:Get(id)
+	if not capture or capture.uploaded or capture.saving then
 		return
 	end
 	if not self._store:CanStar() then
 		if callback then
-			callback(string.format("You can keep up to %d starred captures.", self._store.MaxStarred))
+			callback(string.format("You can keep up to %d uploaded captures.", self._store.MaxStarred))
 		end
 		return
 	end
@@ -319,42 +355,31 @@ function Captures:Star(id: number, callback: ((string?) -> ())?)
 			return
 		end
 		capture.assetId = assetId
-		capture.starred = true
-		local c = { capture.cframe:GetComponents() }
+		capture.uploaded = true
 		self._store:AddStarred({
 			assetId = assetId,
 			name = capture.name,
 			time = capture.time,
 			fov = capture.fov,
 			aspect = capture.aspect,
-			cframe = c,
+			cframe = { capture.cframe:GetComponents() },
 			placeKey = capture.placeKey,
 			placeName = capture.placeName,
 		})
 		local ok, planeErr = pcall(createPlane, capture, assetId)
 		self.Changed:Fire()
 		if callback then
-			callback(if ok then nil else "Saved, but couldn't add the plane: " .. tostring(planeErr))
+			callback(if ok then nil else "Uploaded, but couldn't add the plane: " .. tostring(planeErr))
 		end
 	end)
 end
 
--- Unstarring forgets the capture between sessions but leaves the uploaded
--- image and its plane alone, so nothing the user exported breaks.
-function Captures:Unstar(id: number)
-	local capture = self:Get(id)
-	if not capture or not capture.starred or not capture.assetId then
-		return
-	end
-	self._store:RemoveStarred(capture.assetId)
-	capture.starred = false
-	self.Changed:Fire()
-end
-
+-- Removing an uploaded capture from the gallery leaves the asset and its
+-- plane alone, so nothing the user exported breaks.
 function Captures:Remove(id: number)
 	for index, capture in self.list do
 		if capture.id == id then
-			if capture.starred and capture.assetId then
+			if capture.uploaded and capture.assetId then
 				self._store:RemoveStarred(capture.assetId)
 			end
 			table.remove(self.list, index)
@@ -364,21 +389,21 @@ function Captures:Remove(id: number)
 	end
 end
 
-function Captures:CountUnstarred(): number
+function Captures:CountUnsaved(): number
 	local count = 0
 	for _, capture in self.list do
-		if not capture.starred and not capture.saving then
+		if not capture.uploaded and not capture.saving then
 			count += 1
 		end
 	end
 	return count
 end
 
--- Clears session captures only; starred ones stay.
-function Captures:ClearUnstarred()
+-- Clears session captures only; uploaded ones stay.
+function Captures:ClearUnsaved()
 	for index = #self.list, 1, -1 do
 		local capture = self.list[index]
-		if not capture.starred and not capture.saving then
+		if not capture.uploaded and not capture.saving then
 			table.remove(self.list, index)
 		end
 	end
