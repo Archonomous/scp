@@ -420,6 +420,9 @@ local TARGET_HOLD_TIME = 0.45
 local TARGET_DOUBLE_TAP_GAP = 0.3
 -- Hold feedback starts after this, so ordinary taps don't flash the outline.
 local TARGET_HOLD_FEEDBACK = 0.12
+-- Fly-to arrives this many studs above the line to the point, so landing on
+-- the ground doesn't leave the camera at floor level.
+local FLY_TO_HEIGHT = 5
 
 local gesture = {
 	down = false,
@@ -475,7 +478,7 @@ local function flyToTarget(target: Aim.Target?)
 		return
 	end
 	local standoff = math.clamp(Aim.Radius(target.instance) or 8, 4, 30)
-	if camera:FlyTo(target.position, standoff) then
+	if camera:FlyTo(target.position, standoff, FLY_TO_HEIGHT) then
 		haptics:Play("glide")
 	else
 		haptics:Play("limit")

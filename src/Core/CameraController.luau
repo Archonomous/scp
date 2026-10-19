@@ -250,8 +250,10 @@ function CameraController:FrameSelection(): boolean
 end
 
 -- Glides straight ahead toward a point on the view's centre line, stopping
--- `standoff` studs short of it. Returns false when already that close.
-function CameraController:FlyTo(point: Vector3, standoff: number): boolean
+-- `standoff` studs short of it and `height` studs above that, tilted to keep
+-- the point centred (so orbit works on arrival). Returns false when already
+-- that close.
+function CameraController:FlyTo(point: Vector3, standoff: number, height: number?): boolean
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return false
@@ -261,9 +263,8 @@ function CameraController:FlyTo(point: Vector3, standoff: number): boolean
 	if distance <= standoff + 0.5 then
 		return false
 	end
-	local position = camera.CFrame.Position + look * (distance - standoff)
-	local rx, ry, rz = camera.CFrame:ToEulerAnglesYXZ()
-	self:_startTransition({ cframe = CFrame.new(position) * CFrame.fromEulerAnglesYXZ(rx, ry, rz) })
+	local position = camera.CFrame.Position + look * (distance - standoff) + Vector3.yAxis * (height or 0)
+	self:_startTransition({ cframe = CFrame.lookAt(position, point) })
 	self.transition.focus = point
 	self.orbitCenter = point
 	return true
