@@ -86,9 +86,11 @@ Theme.Icons = {
 -- Built-in gamepad glyph used for the panel logo and as the toolbar fallback.
 Theme.GamepadIcon = "rbxasset://textures/DeviceEmulator/sim_console@32.png"
 
--- Toolbar / panel icon: assets/toolbar-256.png uploaded as an Image asset. Falls back
--- to the built-in gamepad glyph if set to nil.
-Theme.ToolbarIcon = "rbxassetid://135063789186048" :: string?
+-- Uploaded logo images (assets/toolbar-256.png and assets/logo-512.png). The
+-- 256 is used for the toolbar button and panel header, the 512 for the larger
+-- welcome-card logo. Set to nil to use the built-in gamepad glyph.
+Theme.ToolbarIcon = "rbxassetid://80335823838136" :: string?
+Theme.LogoIcon = "rbxassetid://92245240689164" :: string?
 
 -- Yields until the asset has loaded or failed.
 function Theme.IsAssetAvailable(contentId: string): boolean
@@ -101,33 +103,37 @@ function Theme.IsAssetAvailable(contentId: string): boolean
 	return ok and status == Enum.AssetFetchStatus.Success
 end
 
--- Yields, then returns the toolbar icon to use, or nil if none can load. The
--- uploaded image only loads in places its owner can use it in (not group or
--- other creators' places), so the asset's thumbnail is tried next: thumbnails
--- of approved images load anywhere.
-local toolbarIconState: "pending" | "resolving" | "done" = "pending"
-local resolvedToolbarIcon: string? = nil
-function Theme.ResolveToolbarIcon(): string?
-	if toolbarIconState == "pending" then
-		toolbarIconState = "resolving"
-		local icon = Theme.ToolbarIcon
-		local assetId = icon and string.match(icon, "^rbxassetid://(%d+)$")
+-- Yields, then returns the content id to show for an uploaded image, or nil if
+-- none can load. The image itself only loads in places its owner can use it in
+-- (not other creators' places or unpublished files), so the asset's thumbnail
+-- is tried next: thumbnails of approved images load anywhere.
+local resolvedIcons = {} :: { [string]: string | false }
+local resolvingIcons = {} :: { [string]: boolean }
+function Theme.ResolveIcon(icon: string?): string?
+	if not icon then
+		return nil
+	end
+	if resolvedIcons[icon] == nil and not resolvingIcons[icon] then
+		resolvingIcons[icon] = true
 		local candidates = { icon }
+		local assetId = string.match(icon, "^rbxassetid://(%d+)$")
 		if assetId then
 			table.insert(candidates, `rbxthumb://type=Asset&id={assetId}&w=420&h=420`)
 		end
+		local found: string | false = false
 		for _, candidate in candidates do
 			if Theme.IsAssetAvailable(candidate) then
-				resolvedToolbarIcon = candidate
+				found = candidate
 				break
 			end
 		end
-		toolbarIconState = "done"
+		resolvedIcons[icon] = found
+		resolvingIcons[icon] = nil
 	end
-	while toolbarIconState ~= "done" do
+	while resolvedIcons[icon] == nil do
 		task.wait()
 	end
-	return resolvedToolbarIcon
+	return resolvedIcons[icon] or nil
 end
 
 local bindings = setmetatable({}, { __mode = "k" }) :: { [Instance]: { [string]: any } }

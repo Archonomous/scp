@@ -471,7 +471,7 @@ function App:_renderWelcome()
 		Parent = intro,
 	})
 	task.spawn(function()
-		local icon = Theme.ResolveToolbarIcon()
+		local icon = Theme.ResolveIcon(Theme.LogoIcon)
 		if icon and logo.Parent then
 			logo.Image = icon
 			logo.BackgroundTransparency = 1
@@ -590,7 +590,7 @@ function App:_buildHeader(root: Frame)
 	})
 	-- Swap to the full-color logo once the uploaded asset is available.
 	task.spawn(function()
-		local icon = Theme.ResolveToolbarIcon()
+		local icon = Theme.ResolveIcon(Theme.ToolbarIcon)
 		if icon and logo.Parent then
 			logo.BackgroundTransparency = 1
 			logoImage.Image = icon
