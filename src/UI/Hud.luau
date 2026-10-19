@@ -24,6 +24,8 @@ local IDLE_TRANSPARENCY = 0.55
 local TOAST_TIME = 1.8
 local GUIDE_WIDTH = 470
 local GUIDE_GLYPH_WIDTH = 66
+local RETICLE_RING = 18
+local RETICLE_HOLD_RING = 10
 
 local FAST = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SLOW = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -193,11 +195,52 @@ function Hud.new(gamepad: any)
 	})
 	self._guide = guide
 
+	-- Reticle -----------------------------------------------------------------------
+	-- Its own ScreenGui so it stays up when the status HUD is hidden. A dot marks
+	-- the centre; a ring appears when there's something to select, and closes
+	-- in while the select gesture is held.
+	local reticleGui = new("ScreenGui", {
+		Name = "StudioControllerPro_Reticle",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 49,
+		Enabled = false,
+		Archivable = false,
+	})
+	self._reticleGui = reticleGui
+	self._reticleEnabled = true
+	new("Frame", {
+		Name = "Dot",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(5, 5),
+		BackgroundColor3 = TEXT,
+		Children = {
+			Components.Corner(3),
+			new("UIStroke", { Color = Color3.new(0, 0, 0), Transparency = 0.5, Thickness = 1 }),
+		},
+		Parent = reticleGui,
+	})
+	local ring = new("Frame", {
+		Name = "Ring",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(RETICLE_RING, RETICLE_RING),
+		BackgroundTransparency = 1,
+		Visible = false,
+		Children = { Components.Corner(RETICLE_RING) },
+		Parent = reticleGui,
+	})
+	self._ringStroke = new("UIStroke", { Color = TEXT, Transparency = 0.25, Thickness = 1.5, Parent = ring })
+	self._ring = ring
+	reticleGui.Parent = CoreGui
+
 	gui.Parent = CoreGui
 	return self
 end
 
 function Hud:_refreshVisibility()
+	self:_refreshReticle()
 	-- The button guide is shown on request even when the status HUD is hidden,
 	-- and the missing-controller notice always shows.
 	local warning = not self._connected
@@ -206,6 +249,33 @@ function Hud:_refreshVisibility()
 	if not self._visible then
 		self._toast.Visible = false
 	end
+end
+
+function Hud:_refreshReticle()
+	self._reticleGui.Enabled = self._controllerOn
+		and self._connected
+		and not self._captureHidden
+		and self._reticleEnabled
+end
+
+function Hud:SetReticleEnabled(enabled: boolean)
+	self._reticleEnabled = enabled
+	self:_refreshReticle()
+end
+
+-- `hasTarget` shows the ring; `hold` (0..1) closes it in toward the dot while
+-- the select gesture is held.
+function Hud:SetReticle(hasTarget: boolean, hold: number?)
+	local ring = self._ring
+	ring.Visible = hasTarget or (hold or 0) > 0
+	if not ring.Visible then
+		return
+	end
+	local t = math.clamp(hold or 0, 0, 1)
+	local size = RETICLE_RING + (RETICLE_HOLD_RING - RETICLE_RING) * t
+	ring.Size = UDim2.fromOffset(size, size)
+	self._ringStroke.Color = if t > 0 then TEXT:Lerp(Theme.Accent, t) else TEXT
+	self._ringStroke.Thickness = if t > 0 then 2 else 1.5
 end
 
 function Hud:_applyReadouts()
@@ -419,6 +489,7 @@ end
 
 function Hud:Destroy()
 	self.Gui:Destroy()
+	self._reticleGui:Destroy()
 end
 
 return Hud

@@ -179,12 +179,19 @@ Actions.List = {
 		default = { key = "ButtonY" },
 	},
 	{
+		id = "target",
+		name = "Select / fly to target",
+		description = "Tap selects what the reticle is on, double-tap flies to it, hold selects and frames it",
+		category = "Camera",
+		kind = "hold",
+		default = { key = "ButtonA" },
+	},
+	{
 		id = "focusSelection",
 		name = "Frame selection",
 		description = "Glide to frame the selected objects",
 		category = "Camera",
 		kind = "press",
-		default = { key = "ButtonA" },
 	},
 	{
 		id = "returnToStart",

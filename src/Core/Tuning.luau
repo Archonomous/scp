@@ -209,6 +209,22 @@ Tuning.Global = {
 		default = true,
 	},
 	{
+		key = "showReticle",
+		label = "Show reticle",
+		description = "A dot at the centre of the view marks what Select / fly to target acts on",
+		section = "General",
+		kind = "bool",
+		default = true,
+	},
+	{
+		key = "hideHover",
+		label = "Hide hover outline while flying",
+		description = "Turns off Studio's hover highlight in controller mode and restores it afterwards",
+		section = "General",
+		kind = "bool",
+		default = true,
+	},
+	{
 		key = "autoStar",
 		label = "Upload every screenshot",
 		description = "Skips the confirmation. Each screenshot is uploaded to your account and gets a plane in ServerStorage",

@@ -236,6 +236,25 @@ function CameraController:FrameSelection(): boolean
 	return true
 end
 
+-- Glides straight ahead toward a point on the view's centre line, stopping
+-- `standoff` studs short of it. Returns false when already that close.
+function CameraController:FlyTo(point: Vector3, standoff: number): boolean
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return false
+	end
+	local look = camera.CFrame.LookVector
+	local distance = (point - camera.CFrame.Position):Dot(look)
+	if distance <= standoff + 0.5 then
+		return false
+	end
+	local position = camera.CFrame.Position + look * (distance - standoff)
+	local rx, ry, rz = camera.CFrame:ToEulerAnglesYXZ()
+	self:_startTransition({ cframe = CFrame.new(position) * CFrame.fromEulerAnglesYXZ(rx, ry, rz) })
+	self.transition.focus = point
+	return true
+end
+
 -- Per-frame update ------------------------------------------------------------
 
 export type StepInput = {

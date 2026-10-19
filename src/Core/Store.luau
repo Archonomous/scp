@@ -16,7 +16,7 @@ local Signal = require(script.Parent.Parent.Util.Signal)
 
 local SETTINGS_KEY = "StudioControllerPro.Data.v1"
 local EXPORT_FORMAT = "StudioControllerPro.Profile"
-local SCHEMA = 2
+local SCHEMA = 3
 local MAX_PROFILES = 32
 local MAX_NAME_LENGTH = 32
 local MAX_STARRED = 200
@@ -143,6 +143,8 @@ end
 local LEGACY_DEFAULTS = {
 	-- View + Menu is intercepted by Windows / Steam controller shortcuts.
 	[2] = { toggleController = { key = "ButtonStart", mod = "ButtonSelect" } },
+	-- A moved to the reticle target gesture; frame selection is now unbound.
+	[3] = { focusSelection = { key = "ButtonA" } },
 }
 
 local function isLegacyDefault(actionId: string, raw: any, fromSchema: number): boolean
@@ -236,7 +238,7 @@ local function defaultData()
 		activeProfileId = profiles[1].id,
 		profiles = profiles,
 		settings = Tuning.GlobalDefaults(),
-		runtime = { speedIndex = 5, gamepad = "Auto", welcomed = false },
+		runtime = { speedIndex = 5, gamepad = "Auto", welcomed = false, hoverToRestore = false },
 		starred = {},
 	}
 end
@@ -298,6 +300,7 @@ local function sanitizeData(raw: any)
 		data.runtime.gamepad = rawRuntime.gamepad
 	end
 	data.runtime.welcomed = rawRuntime.welcomed == true
+	data.runtime.hoverToRestore = rawRuntime.hoverToRestore == true
 
 	if type(raw.starred) == "table" then
 		for _, entry in raw.starred do

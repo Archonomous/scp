@@ -8,6 +8,7 @@
 ]]
 
 local RunService = game:GetService("RunService")
+local Selection = game:GetService("Selection")
 local UserInputService = game:GetService("UserInputService")
 
 -- Plugins also load inside Play-test data models; the game owns the
@@ -16,6 +17,7 @@ if not plugin or not RunService:IsEdit() then
 	return
 end
 
+local Aim = require(script.Core.Aim)
 local Actions = require(script.Core.Actions)
 local CameraController = require(script.Core.CameraController)
 local Captures = require(script.Core.Captures)
@@ -45,6 +47,7 @@ runtime.camera = CameraController.new()
 runtime.resolver = Resolver.new()
 runtime.hud = Hud.new(runtime.gamepad)
 runtime.haptics = Haptics.new(runtime.gamepad, runtime.store)
+runtime.aim = Aim.new()
 runtime.StateChanged = Signal.new()
 -- Fired with a user-facing message for the panel (upload results, warnings).
 runtime.Notice = Signal.new()
@@ -56,6 +59,7 @@ maid:Give(runtime.captures)
 maid:Give(runtime.camera)
 maid:Give(runtime.hud)
 maid:Give(runtime.haptics)
+maid:Give(runtime.aim)
 maid:Give(runtime.StateChanged)
 maid:Give(runtime.Notice)
 
@@ -65,6 +69,38 @@ local camera = runtime.camera
 local resolver = runtime.resolver
 local hud = runtime.hud
 local haptics = runtime.haptics
+local aim = runtime.aim
+
+-- Studio's hover outline follows the mouse pointer, which sits still over the
+-- viewport while flying, so whatever is under it stays highlighted. It's turned
+-- off in controller mode and restored afterwards; the flag is saved so a crash
+-- mid-flight gets restored on the next load.
+local studioSettings = settings().Studio
+
+local function setHoverHidden(hidden: boolean)
+	if hidden then
+		if store:GetRuntime("hoverToRestore") then
+			return
+		end
+		local ok, shown = pcall(function()
+			return studioSettings["Show Hover Over"]
+		end)
+		if ok and shown and pcall(function()
+			studioSettings["Show Hover Over"] = false
+		end) then
+			store:SetRuntime("hoverToRestore", true)
+		end
+	elseif store:GetRuntime("hoverToRestore") then
+		pcall(function()
+			studioSettings["Show Hover Over"] = true
+		end)
+		store:SetRuntime("hoverToRestore", false)
+	end
+end
+setHoverHidden(false)
+
+-- Defined with the target gesture below.
+local resetGesture: () -> ()
 
 gamepad:SetPreference(store:GetRuntime("gamepad") or "Auto")
 camera.speedIndex = math.clamp(store:GetRuntime("speedIndex") or 5, 1, #CameraController.SpeedSteps)
@@ -115,6 +151,7 @@ function runtime:SetOn(on: boolean)
 	resolver:Reset()
 	if on then
 		camera:Begin()
+		setHoverHidden(store:GetSetting("hideHover"))
 		refreshHudStatus()
 		hud:SetConnected(gamepad:IsConnected())
 		hud:SetControllerOn(true)
@@ -130,6 +167,8 @@ function runtime:SetOn(on: boolean)
 	else
 		camera:End(store:GetSetting("levelOnExit"))
 		hud:SetControllerOn(false)
+		setHoverHidden(false)
+		resetGesture()
 		haptics:Play("off")
 	end
 	if toolbarButton then
@@ -372,6 +411,105 @@ local pressHandlers: { [string]: () -> () } = {
 	end,
 }
 
+-- Select / fly to target -------------------------------------------------------
+-- One button, three gestures on what the reticle is on: tap selects it,
+-- double-tap flies toward it, hold selects and frames it. A tap waits out the
+-- double-tap window before selecting.
+
+local TARGET_HOLD_TIME = 0.45
+local TARGET_DOUBLE_TAP_GAP = 0.3
+-- Hold feedback starts after this, so ordinary taps don't flash the outline.
+local TARGET_HOLD_FEEDBACK = 0.12
+
+local gesture = {
+	down = false,
+	downAt = 0,
+	consumed = false,
+	target = nil :: Aim.Target?,
+	pendingTap = false,
+	tapAt = 0,
+}
+
+function resetGesture()
+	gesture.down = false
+	gesture.consumed = false
+	gesture.pendingTap = false
+	gesture.target = nil
+	aim:SetOutlined(false)
+	hud:SetReticle(false, 0)
+end
+
+local function selectTarget(target: Aim.Target?, frame: boolean)
+	local instance = target and target.instance
+	if not instance then
+		hud:Toast(if target then "Can't select that" else "Nothing under the reticle", glyphFor("target"))
+		haptics:Play("limit")
+		return
+	end
+	Selection:Set({ instance })
+	if frame then
+		camera:FrameSelection()
+		hud:Toast("Framing " .. instance.Name, glyphFor("target"))
+		haptics:Play("glide")
+	else
+		hud:Toast("Selected " .. instance.Name, glyphFor("target"))
+		haptics:Play("tick")
+	end
+end
+
+local function flyToTarget(target: Aim.Target?)
+	if not target then
+		hud:Toast("Nothing under the reticle", glyphFor("target"))
+		haptics:Play("limit")
+		return
+	end
+	local standoff = math.clamp(Aim.Radius(target.instance) or 8, 4, 30)
+	if camera:FlyTo(target.position, standoff) then
+		haptics:Play("glide")
+	else
+		haptics:Play("limit")
+	end
+end
+
+local function stepTarget(held: boolean)
+	local now = os.clock()
+	if held and not gesture.down then
+		gesture.down = true
+		gesture.downAt = now
+		gesture.consumed = false
+		gesture.target = aim.target
+		if gesture.pendingTap and now - gesture.tapAt <= TARGET_DOUBLE_TAP_GAP then
+			gesture.pendingTap = false
+			gesture.consumed = true
+			hud:Poke()
+			flyToTarget(aim.target)
+		end
+	elseif held and not gesture.consumed and now - gesture.downAt >= TARGET_HOLD_TIME then
+		gesture.consumed = true
+		hud:Poke()
+		selectTarget(aim.target, true)
+	elseif not held and gesture.down then
+		gesture.down = false
+		if not gesture.consumed then
+			gesture.pendingTap = true
+			gesture.tapAt = now
+		end
+	end
+	if gesture.pendingTap and not gesture.down and now - gesture.tapAt > TARGET_DOUBLE_TAP_GAP then
+		gesture.pendingTap = false
+		hud:Poke()
+		selectTarget(gesture.target, false)
+	end
+
+	local hold = 0
+	if gesture.down and not gesture.consumed then
+		hold = math.max(now - gesture.downAt - TARGET_HOLD_FEEDBACK, 0) / (TARGET_HOLD_TIME - TARGET_HOLD_FEEDBACK)
+	end
+	aim:SetOutlined(hold > 0)
+	local current = aim.target
+	hud:SetReticle(current ~= nil and current.instance ~= nil, hold)
+end
+
 -- Frame loop -------------------------------------------------------------------
 
 local app: any = nil
@@ -440,6 +578,9 @@ local function onFrame(dt: number)
 	end
 
 	if runtime._on then
+		aim:Update()
+		stepTarget(output.held.target == true)
+
 		local tuning = activeProfile().tuning
 		local moved = camera:Step(dt, {
 			move = CameraController.ShapeStick(output.sticks.move or Vector2.zero, tuning.deadzone, tuning.curve),
@@ -463,6 +604,7 @@ maid:Give(RunService.PreRender:Connect(onFrame))
 
 resolver:SetBindings(activeProfile().bindings)
 hud:SetVisible(store:GetSetting("hudEnabled"))
+hud:SetReticleEnabled(store:GetSetting("showReticle"))
 
 maid:Give(store.Changed:Connect(function(kind)
 	if kind == "profile" or kind == "bindings" or kind == "profiles" then
@@ -475,6 +617,10 @@ maid:Give(store.Changed:Connect(function(kind)
 		refreshHudStatus()
 	elseif kind == "settings" then
 		hud:SetVisible(store:GetSetting("hudEnabled"))
+		hud:SetReticleEnabled(store:GetSetting("showReticle"))
+		if runtime._on then
+			setHoverHidden(store:GetSetting("hideHover"))
+		end
 	end
 end))
 
@@ -597,6 +743,7 @@ plugin.Unloading:Connect(function()
 	if runtime._on then
 		camera:End(store:GetSetting("levelOnExit"))
 	end
+	setHoverHidden(false)
 	store:SaveNow()
 	maid:Clean()
 	Theme.Destroy()

@@ -10,6 +10,7 @@
 
 - Toggle controller mode from the toolbar, a keyboard shortcut, or by clicking both sticks
 - Smooth fly camera with roll, FOV zoom, speed steps, boost and precision
+- Centre reticle: select, fly to, or frame whatever you're looking at with one button
 - Level movement mode (like shift lock) so looking down never dives
 - Screenshots from the controller, with one-click return to any shot's exact view
 - Upload screenshots to keep them: they land on exportable planes in ServerStorage
@@ -29,7 +30,7 @@
 | D-Pad Up / Down | Speed |
 | D-Pad Left / Right | FOV |
 | LS click / B | Boost / Precision |
-| A | Frame selection |
+| A | Tap: select what the reticle is on · Double-tap: fly to it · Hold: select and frame it |
 | X | Screenshot |
 | Y | Reset camera |
 | View + Y | Toggle level movement |
