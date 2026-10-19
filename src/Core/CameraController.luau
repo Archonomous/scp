@@ -249,24 +249,30 @@ function CameraController:FrameSelection(): boolean
 	return true
 end
 
--- Glides straight ahead toward a point on the view's centre line, stopping
--- `standoff` studs short of it and `height` studs above that, tilted to keep
--- the point centred (so orbit works on arrival). Returns false when already
--- that close.
+-- Glides toward a point, stopping `standoff` studs short of it horizontally
+-- and `height` studs above it. The view arrives level: the focus (and orbit
+-- centre) is the point raised to the camera's height, so the camera plane
+-- stays parallel with the horizon. Returns false when already there.
 function CameraController:FlyTo(point: Vector3, standoff: number, height: number?): boolean
 	local camera = workspace.CurrentCamera
 	if not camera then
 		return false
 	end
-	local look = camera.CFrame.LookVector
-	local distance = (point - camera.CFrame.Position):Dot(look)
-	if distance <= standoff + 0.5 then
+	local from = camera.CFrame.Position
+	local flat = Vector3.new(point.X - from.X, 0, point.Z - from.Z)
+	if flat.Magnitude < EPSILON then
+		-- Straight above or below: keep the current heading.
+		local _, heading = camera.CFrame:ToEulerAnglesYXZ()
+		flat = CFrame.fromEulerAnglesYXZ(0, heading, 0).LookVector
+	end
+	local focus = point + Vector3.yAxis * (height or 0)
+	local position = focus - flat.Unit * standoff
+	if (position - from).Magnitude < 0.5 then
 		return false
 	end
-	local position = camera.CFrame.Position + look * (distance - standoff) + Vector3.yAxis * (height or 0)
-	self:_startTransition({ cframe = CFrame.lookAt(position, point) })
-	self.transition.focus = point
-	self.orbitCenter = point
+	self:_startTransition({ cframe = CFrame.lookAt(position, focus) })
+	self.transition.focus = focus
+	self.orbitCenter = focus
 	return true
 end
 

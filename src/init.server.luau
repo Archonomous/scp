@@ -420,7 +420,7 @@ local TARGET_HOLD_TIME = 0.45
 local TARGET_DOUBLE_TAP_GAP = 0.3
 -- Hold feedback starts after this, so ordinary taps don't flash the outline.
 local TARGET_HOLD_FEEDBACK = 0.12
--- Fly-to arrives this many studs above the line to the point, so landing on
+-- Fly-to arrives this many studs above the point, looking level, so landing on
 -- the ground doesn't leave the camera at floor level.
 local FLY_TO_HEIGHT = 5
 
