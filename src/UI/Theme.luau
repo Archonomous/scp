@@ -89,8 +89,8 @@ Theme.GamepadIcon = "rbxasset://textures/DeviceEmulator/sim_console@32.png"
 -- Uploaded logo images (assets/toolbar-256.png and assets/logo-512.png). The
 -- 256 is used for the toolbar button and panel header, the 512 for the larger
 -- welcome-card logo. Set to nil to use the built-in gamepad glyph.
-Theme.ToolbarIcon = "rbxassetid://80335823838136" :: string?
-Theme.LogoIcon = "rbxassetid://92245240689164" :: string?
+Theme.ToolbarIcon = "rbxassetid://127339306931910" :: string?
+Theme.LogoIcon = "rbxassetid://96923239290322" :: string?
 
 -- Yields until the asset has loaded or failed.
 function Theme.IsAssetAvailable(contentId: string): boolean
