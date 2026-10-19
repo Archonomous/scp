@@ -30,7 +30,7 @@
 | D-Pad Up / Down | Speed |
 | D-Pad Left / Right | FOV |
 | LS click / B | Boost / Precision |
-| A | Tap: select what the reticle is on · Double-tap: fly to it · Hold: select and frame it, then orbit with the right stick and zoom with RT / LT until you move (hold on empty space to deselect) |
+| A | Tap: select what the reticle is on · Double-tap: fly to it · Hold: select and frame it, then orbit with the right stick and zoom with RT / LT until you move (hold on empty space, or on what's already selected, to deselect while keeping the view) |
 | X | Screenshot |
 | Y | Reset camera |
 | View + Y | Toggle level movement |

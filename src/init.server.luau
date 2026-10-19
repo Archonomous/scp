@@ -442,10 +442,21 @@ function resetGesture()
 	hud:SetReticle(false, 0)
 end
 
+-- True when `instance` is selected, or something inside it is.
+local function isSelected(instance: Instance): boolean
+	for _, selected in Selection:Get() do
+		if selected == instance or selected:IsDescendantOf(instance) then
+			return true
+		end
+	end
+	return false
+end
+
 local function selectTarget(target: Aim.Target?, frame: boolean)
 	local instance = target and target.instance
-	if not instance and frame then
-		-- Holding on empty space (or terrain / locked parts) clears the selection.
+	if frame and (not instance or isSelected(instance)) then
+		-- Holding on empty space (or terrain / locked parts), or on what's already
+		-- selected, clears the selection. The camera and any orbit stay put.
 		if #Selection:Get() > 0 then
 			Selection:Set({})
 			hud:Toast("Selection cleared", glyphFor("target"))
