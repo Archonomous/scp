@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Small-size version of logo.svg for the toolbar (shown at 32px, uploaded
+       at 128px). No glow or highlight, bolder details, and every straight
+       edge on a 16-unit grid so it lands on whole pixels at 32 / 64 / 128. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#262056"/>
+      <stop offset="1" stop-color="#11122A"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0.05" y1="0.1" x2="0.95" y2="0.9">
+      <stop offset="0" stop-color="#36E0FF"/>
+      <stop offset="0.45" stop-color="#6B5BFF"/>
+      <stop offset="0.75" stop-color="#B14BFF"/>
+      <stop offset="1" stop-color="#FF4FA8"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#tile)"/>
+  <path d="M160 128H352C400 128 428 160 440 208L472 320C480 368 448 400 416 400C392 400 376 384 364 368L336 336H176L148 368C136 384 120 400 96 400C64 400 32 368 40 320L72 208C84 160 112 128 160 128Z" fill="url(#body)"/>
+  <!-- D-pad -->
+  <rect x="112" y="208" width="96" height="32" rx="4" fill="#15132E"/>
+  <rect x="144" y="176" width="32" height="96" rx="4" fill="#15132E"/>
+  <!-- Face buttons -->
+  <circle cx="368" cy="184" r="24" fill="#15132E"/>
+  <circle cx="368" cy="264" r="24" fill="#15132E"/>
+  <circle cx="328" cy="224" r="24" fill="#15132E"/>
+  <circle cx="408" cy="224" r="24" fill="#15132E"/>
+  <!-- Studio motif: upright here so it stays crisp at 32px -->
+  <rect x="240" y="208" width="32" height="32" rx="2" fill="#FFFFFF"/>
+</svg>
