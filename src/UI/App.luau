@@ -148,7 +148,7 @@ function App.new(plugin: Plugin, runtime: any)
 
 	local info = DockWidgetPluginGuiInfo.new(Enum.InitialDockState.Right, false, false, 340, 600, 300, 360)
 	local widget = plugin:CreateDockWidgetPluginGuiAsync("StudioControllerPro", info)
-	widget.Title = "Studio Controller Pro"
+	widget.Title = runtime.title
 	widget.Name = "StudioControllerPro"
 	widget.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	self.Widget = widget
@@ -597,7 +597,7 @@ function App:_buildHeader(root: Frame)
 	end)
 
 	Components.Text({
-		Text = "Studio Controller Pro",
+		Text = self._runtime.title,
 		FontFace = Theme.Font.Bold,
 		TextSize = Theme.TextSize.Title,
 		Position = UDim2.fromOffset(42, -1),
@@ -2124,7 +2124,8 @@ function App:_render_controller(content: Frame, maid: any)
 	Components.Divider(nextOrder(), content)
 	Components.SectionHeader("About", nextOrder(), content)
 	hint(
-		"Studio Controller Pro "
+		self._runtime.title
+			.. " "
 			.. VERSION
 			.. ". Fly the edit camera with a gamepad, with custom bindings and profiles.",
 		nextOrder(),

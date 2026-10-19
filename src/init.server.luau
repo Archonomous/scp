@@ -34,6 +34,10 @@ local maid = Maid.new()
 -- Runtime ----------------------------------------------------------------------
 
 local runtime = {}
+-- Local builds (the dev .rbxm in the Plugins folder) are labelled "Test" so they
+-- can be told apart from the Creator Store copy. Store plugins are named
+-- "cloud_<id>"; local ones keep their file name.
+runtime.title = if string.find(plugin.Name, "%.rbxmx?$") then "Studio Controller Pro Test" else "Studio Controller Pro"
 runtime.store = Store.new(plugin)
 runtime.gamepad = Gamepad.new()
 runtime.captures = Captures.new(runtime.store)
@@ -511,7 +515,7 @@ end))
 
 -- Toolbar, actions, widget ---------------------------------------------------------
 
-local toolbar = plugin:CreateToolbar("Studio Controller Pro")
+local toolbar = plugin:CreateToolbar(runtime.title)
 toolbarButton = toolbar:CreateButton(
 	"StudioControllerPro_Toggle",
 	"Turn controller mode on or off",
@@ -520,7 +524,7 @@ toolbarButton = toolbar:CreateButton(
 )
 local settingsButton = toolbar:CreateButton(
 	"StudioControllerPro_Panel",
-	"Open the Studio Controller Pro panel",
+	"Open the " .. runtime.title .. " panel",
 	Theme.Icon(Theme.Icons.Settings),
 	"Settings"
 )
