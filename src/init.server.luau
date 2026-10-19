@@ -533,8 +533,9 @@ toolbarButton.ClickableWhenViewportHidden = true
 -- The custom icon is an uploaded asset; swap it in once it loads so the
 -- button never shows blank (e.g. while a new upload is in moderation).
 task.spawn(function()
-	if Theme.ToolbarIcon and Theme.IsAssetAvailable(Theme.ToolbarIcon) then
-		toolbarButton.Icon = Theme.ToolbarIcon
+	local icon = Theme.ResolveToolbarIcon()
+	if icon then
+		toolbarButton.Icon = icon
 	end
 end)
 settingsButton.ClickableWhenViewportHidden = true

@@ -101,6 +101,35 @@ function Theme.IsAssetAvailable(contentId: string): boolean
 	return ok and status == Enum.AssetFetchStatus.Success
 end
 
+-- Yields, then returns the toolbar icon to use, or nil if none can load. The
+-- uploaded image only loads in places its owner can use it in (not group or
+-- other creators' places), so the asset's thumbnail is tried next: thumbnails
+-- of approved images load anywhere.
+local toolbarIconState: "pending" | "resolving" | "done" = "pending"
+local resolvedToolbarIcon: string? = nil
+function Theme.ResolveToolbarIcon(): string?
+	if toolbarIconState == "pending" then
+		toolbarIconState = "resolving"
+		local icon = Theme.ToolbarIcon
+		local assetId = icon and string.match(icon, "^rbxassetid://(%d+)$")
+		local candidates = { icon }
+		if assetId then
+			table.insert(candidates, `rbxthumb://type=Asset&id={assetId}&w=420&h=420`)
+		end
+		for _, candidate in candidates do
+			if Theme.IsAssetAvailable(candidate) then
+				resolvedToolbarIcon = candidate
+				break
+			end
+		end
+		toolbarIconState = "done"
+	end
+	while toolbarIconState ~= "done" do
+		task.wait()
+	end
+	return resolvedToolbarIcon
+end
+
 local bindings = setmetatable({}, { __mode = "k" }) :: { [Instance]: { [string]: any } }
 local iconBindings = setmetatable({}, { __mode = "k" }) :: { [Instance]: { [string]: string } }
 local listeners = {} :: { () -> () }
